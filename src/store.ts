@@ -1,48 +1,26 @@
-// データの保存と読み書きをまとめた場所です。
-// ブラウザの localStorage に丸ごと保存するので、サーバーは要りません。
-// 画面側は useStore() を呼ぶだけで、最新データを受け取って自動で再描画されます。
+// アプリ内のデータの持ち方と操作をまとめた場所。
+//
+// 仕組み：メモリ上に最新データ(db)を持ち、画面は useStore() でそれを読む。
+// 変更があったら、まずメモリを即書き換えて画面を反応させ(楽観更新)、
+// 裏で Supabase にも書き込む。読み込みは hydrate() でまとめて取得する。
 
 import { useSyncExternalStore } from "react";
-import { emptyDB, type DB, type Item, type DoneLog } from "./types";
-import { seedDB, migrateV1 } from "./seed";
+import { emptyDB, type DB, type Item, type Step, type TodayItem, type DoneLog } from "./types";
+import { seedDB } from "./seed";
+import * as remote from "./db";
 
-const KEY = "ippo:db:v2";
-const OLD_KEY = "ippo:db:v1"; // 旧モデル。あれば一度だけ移し替える。
-
-function load(): DB {
-  try {
-    const cur = localStorage.getItem(KEY);
-    if (cur) return { ...structuredClone(emptyDB), ...(JSON.parse(cur) as Partial<DB>) };
-
-    // 旧データがあれば新モデルへ移し替え
-    const old = localStorage.getItem(OLD_KEY);
-    if (old) {
-      const migrated = migrateV1(JSON.parse(old));
-      localStorage.setItem(KEY, JSON.stringify(migrated));
-      return migrated;
-    }
-
-    // まっさらなら初期データを入れる
-    const seeded = seedDB();
-    localStorage.setItem(KEY, JSON.stringify(seeded));
-    return seeded;
-  } catch {
-    return structuredClone(emptyDB);
-  }
-}
-
-let db: DB = load();
+let db: DB = structuredClone(emptyDB);
 const listeners = new Set<() => void>();
 
 function emit() {
   for (const l of listeners) l();
 }
 
-function update(mutate: (draft: DB) => void) {
+/** メモリを書き換えて画面に知らせる（保存は各操作が Supabase に対して行う） */
+function optimistic(mutate: (draft: DB) => void) {
   const next = structuredClone(db);
   mutate(next);
   db = next;
-  localStorage.setItem(KEY, JSON.stringify(db));
   emit();
 }
 
@@ -60,9 +38,45 @@ export function useStore(): DB {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
+// --- 起動・ログイン/ログアウト時 ---
+
+/** Supabase から自分の全データを読み込んでメモリに載せる */
+export async function hydrate() {
+  db = await remote.fetchAll();
+  emit();
+}
+
+/** まだ何も無ければ、ローカルにあった分 or 初期データをアップロードする */
+export async function seedIfEmpty() {
+  if (db.items.length > 0) return;
+  const initial = localInitial() ?? seedDB();
+  await remote.bulkInsert(initial);
+  db = initial;
+  emit();
+}
+
+/** 以前 localStorage に持っていたデータがあれば、それを初期データとして使う */
+function localInitial(): DB | null {
+  try {
+    const raw = localStorage.getItem("ippo:db:v2");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DB>;
+    if (!parsed.items || parsed.items.length === 0) return null;
+    return { ...structuredClone(emptyDB), ...parsed };
+  } catch {
+    return null;
+  }
+}
+
+/** ログアウト時にメモリを空にする */
+export function clearStore() {
+  db = structuredClone(emptyDB);
+  emit();
+}
+
 // --- 道具 ---
 
-const id = () => crypto.randomUUID();
+const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
 /** "YYYY-MM-DD"（端末のローカル日付） */
@@ -98,7 +112,7 @@ export function itemToInput(item: Item): string {
   return tagStr ? `${item.title} ${tagStr}` : item.title;
 }
 
-/** 今あるタグの一覧（重複なし・五十音/コード順）。絞り込みや候補に使う。 */
+/** 今あるタグの一覧（重複なし）。絞り込みや候補に使う。 */
 export function allTags(d: DB): string[] {
   const set = new Set<string>();
   for (const it of d.items) for (const t of it.tags) set.add(t);
@@ -110,119 +124,125 @@ export function allTags(d: DB): string[] {
 export function addItem(input: string, recurring: boolean): string | null {
   const { title, tags } = parseTags(input);
   if (!title) return null;
-  const newId = id();
-  update((d) => {
-    const item: Item = {
-      id: newId,
-      title,
-      tags,
-      recurring,
-      status: "open",
-      createdAt: now(),
-    };
-    d.items.push(item);
-  });
-  return newId;
+  const item: Item = { id: uid(), title, tags, recurring, status: "open", createdAt: now() };
+  optimistic((d) => d.items.push(item));
+  void remote.insertItem(item);
+  return item.id;
 }
 
 export function editItem(itemId: string, input: string, recurring: boolean) {
   const { title, tags } = parseTags(input);
   if (!title) return;
-  update((d) => {
+  optimistic((d) => {
     const it = d.items.find((x) => x.id === itemId);
     if (!it) return;
     it.title = title;
     it.tags = tags;
     it.recurring = recurring;
   });
+  const updated = db.items.find((x) => x.id === itemId);
+  if (updated) void remote.updateItem(updated);
 }
 
 export function deleteItem(itemId: string) {
-  update((d) => {
+  optimistic((d) => {
     d.items = d.items.filter((i) => i.id !== itemId);
     d.steps = d.steps.filter((s) => s.itemId !== itemId);
     d.today = d.today.filter((t) => t.itemId !== itemId);
-    // できたことログ（DoneLog）はあえて消さない。見返す記録として残す。
+    // できたことログ（DoneLog）はあえて残す。見返す記録として残す。
   });
+  void remote.deleteItemRow(itemId);
 }
 
-/** 一度きりのアイテムを「できた」にする。完了をログに残す。 */
+/** 一度きりのアイテムを「できた」にする */
 export function completeItem(itemId: string) {
-  update((d) => {
+  const current = db.items.find((x) => x.id === itemId);
+  if (!current || current.status === "done") return;
+  const doneAt = now();
+  const log: DoneLog = {
+    id: uid(),
+    date: todayStr(),
+    refType: "item",
+    refId: itemId,
+    title: current.title,
+    doneAt,
+  };
+  optimistic((d) => {
     const it = d.items.find((x) => x.id === itemId);
-    if (!it || it.status === "done") return;
+    if (!it) return;
     it.status = "done";
-    it.doneAt = now();
-    d.doneLogs.push({
-      id: id(),
-      date: todayStr(),
-      refType: "item",
-      refId: it.id,
-      title: it.title,
-      doneAt: it.doneAt,
-    });
+    it.doneAt = doneAt;
+    d.doneLogs.push(log);
   });
+  const updated = db.items.find((x) => x.id === itemId);
+  if (updated) void remote.updateItem(updated);
+  void remote.insertLog(log);
 }
 
 export function reopenItem(itemId: string) {
-  update((d) => {
+  optimistic((d) => {
     const it = d.items.find((x) => x.id === itemId);
     if (!it) return;
     it.status = "open";
     delete it.doneAt;
     d.doneLogs = d.doneLogs.filter((l) => !(l.refType === "item" && l.refId === itemId));
   });
+  const updated = db.items.find((x) => x.id === itemId);
+  if (updated) void remote.updateItem(updated);
+  void remote.deleteLogsByRef("item", itemId);
 }
 
 // --- 毎日の習慣（recurring なアイテム） ---
 
-/** その習慣が指定日に完了済みか */
 export function isRecurringDoneToday(d: DB, itemId: string, date: string = todayStr()): boolean {
   return d.doneLogs.some((l) => l.refType === "item" && l.refId === itemId && l.date === date);
 }
 
-/** 習慣の「今日できた」を切り替える。完了したらログに残し、外したらログも消す。 */
 export function toggleRecurringToday(itemId: string) {
   const date = todayStr();
-  update((d) => {
-    const it = d.items.find((x) => x.id === itemId);
-    if (!it) return;
-    const already = d.doneLogs.some(
-      (l) => l.refType === "item" && l.refId === itemId && l.date === date
-    );
-    if (already) {
+  const already = db.doneLogs.some(
+    (l) => l.refType === "item" && l.refId === itemId && l.date === date
+  );
+  if (already) {
+    optimistic((d) => {
       d.doneLogs = d.doneLogs.filter(
         (l) => !(l.refType === "item" && l.refId === itemId && l.date === date)
       );
-    } else {
-      d.doneLogs.push({
-        id: id(),
-        date,
-        refType: "item",
-        refId: it.id,
-        title: it.title,
-        doneAt: now(),
-      });
-    }
-  });
+    });
+    void remote.deleteLogsByRef("item", itemId, date);
+  } else {
+    const it = db.items.find((x) => x.id === itemId);
+    if (!it) return;
+    const log: DoneLog = {
+      id: uid(),
+      date,
+      refType: "item",
+      refId: itemId,
+      title: it.title,
+      doneAt: now(),
+    };
+    optimistic((d) => d.doneLogs.push(log));
+    void remote.insertLog(log);
+  }
 }
 
 // --- 今日やること ---
 
 export function addToToday(itemId: string) {
   const date = todayStr();
-  update((d) => {
-    if (d.today.some((t) => t.date === date && t.itemId === itemId)) return;
-    const order = d.today.filter((t) => t.date === date).length;
-    d.today.push({ id: id(), date, itemId, order });
-  });
+  if (db.today.some((t) => t.date === date && t.itemId === itemId)) return;
+  const order = db.today.filter((t) => t.date === date).length;
+  const entry: TodayItem = { id: uid(), itemId, date, order };
+  optimistic((d) => d.today.push(entry));
+  void remote.insertToday(entry);
 }
 
 export function removeFromToday(itemId: string) {
   const date = todayStr();
-  update((d) => {
+  optimistic((d) => {
     d.today = d.today.filter((t) => !(t.date === date && t.itemId === itemId));
   });
+  void remote.deleteTodayByItem(itemId, date);
 }
 
 // --- 手順（ステップ） ---
@@ -230,58 +250,70 @@ export function removeFromToday(itemId: string) {
 export function addStep(itemId: string, title: string) {
   const trimmed = title.trim();
   if (!trimmed) return;
-  update((d) => {
-    const siblings = d.steps.filter((s) => s.itemId === itemId);
-    d.steps.push({
-      id: id(),
-      itemId,
-      title: trimmed,
-      order: siblings.length,
-      done: false,
-    });
-  });
+  const order = db.steps.filter((s) => s.itemId === itemId).length;
+  const step: Step = { id: uid(), itemId, title: trimmed, order, done: false };
+  optimistic((d) => d.steps.push(step));
+  void remote.insertStep(step);
 }
 
 export function deleteStep(stepId: string) {
-  update((d) => {
+  optimistic((d) => {
     d.steps = d.steps.filter((s) => s.id !== stepId);
     d.doneLogs = d.doneLogs.filter((l) => !(l.refType === "step" && l.refId === stepId));
   });
+  void remote.deleteStepRow(stepId);
 }
 
 export function toggleStep(stepId: string) {
-  update((d) => {
-    const s = d.steps.find((x) => x.id === stepId);
-    if (!s) return;
-    if (s.done) {
-      s.done = false;
-      delete s.doneAt;
+  const s = db.steps.find((x) => x.id === stepId);
+  if (!s) return;
+  if (s.done) {
+    optimistic((d) => {
+      const st = d.steps.find((x) => x.id === stepId);
+      if (st) {
+        st.done = false;
+        delete st.doneAt;
+      }
       d.doneLogs = d.doneLogs.filter((l) => !(l.refType === "step" && l.refId === stepId));
-    } else {
-      s.done = true;
-      s.doneAt = now();
-      d.doneLogs.push({
-        id: id(),
-        date: todayStr(),
-        refType: "step",
-        refId: s.id,
-        title: s.title,
-        doneAt: s.doneAt,
-      });
-    }
-  });
+    });
+    const updated = db.steps.find((x) => x.id === stepId);
+    if (updated) void remote.updateStep(updated);
+    void remote.deleteLogsByRef("step", stepId);
+  } else {
+    const doneAt = now();
+    const log: DoneLog = {
+      id: uid(),
+      date: todayStr(),
+      refType: "step",
+      refId: stepId,
+      title: s.title,
+      doneAt,
+    };
+    optimistic((d) => {
+      const st = d.steps.find((x) => x.id === stepId);
+      if (st) {
+        st.done = true;
+        st.doneAt = doneAt;
+      }
+      d.doneLogs.push(log);
+    });
+    const updated = db.steps.find((x) => x.id === stepId);
+    if (updated) void remote.updateStep(updated);
+    void remote.insertLog(log);
+  }
 }
 
 // --- できたことログ ---
 
 export function setLogMemo(logId: string, memo: string) {
-  update((d) => {
+  const trimmed = memo.trim();
+  optimistic((d) => {
     const l = d.doneLogs.find((x) => x.id === logId);
     if (!l) return;
-    const trimmed = memo.trim();
     if (trimmed) l.memo = trimmed;
     else delete l.memo;
   });
+  void remote.updateLogMemo(logId, trimmed || null);
 }
 
 /** その日にできたことを取り出す（新しい順） */
