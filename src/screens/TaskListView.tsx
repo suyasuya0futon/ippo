@@ -7,6 +7,7 @@ import {
   addItem,
   addToToday,
   removeFromToday,
+  setScheduledDate,
   addStep,
   toggleStep,
   deleteStep,
@@ -314,6 +315,30 @@ function TaskRow({
           </button>
         </span>
       </div>
+
+      {/* 今後やる：予定日の指定・変更・なし */}
+      {mode === "future" && (
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px 10px 4px" }}
+        >
+          <span style={{ fontSize: 12, color: "var(--text-soft)" }}>予定日</span>
+          <input
+            type="date"
+            value={item.scheduledDate ?? ""}
+            onChange={(e) => setScheduledDate(item.id, e.target.value || null)}
+            style={{ fontSize: 13, padding: "5px 8px", width: "auto" }}
+          />
+          {item.scheduledDate && (
+            <button
+              className="btn--ghost btn"
+              style={{ fontSize: 12, padding: "2px 6px" }}
+              onClick={() => setScheduledDate(item.id, null)}
+            >
+              日付なし
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ステップ（あれば表示） */}
       {steps.length > 0 && (

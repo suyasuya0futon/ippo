@@ -261,10 +261,15 @@ export function addToToday(itemId: string) {
 
 /** 今日やるから外す：予定日を未定（null）に戻す */
 export function removeFromToday(itemId: string) {
+  setScheduledDate(itemId, null);
+}
+
+/** 予定日を任意の日付に設定（null で未定）。毎日タスクは対象外。 */
+export function setScheduledDate(itemId: string, date: string | null) {
   optimistic((d) => {
     const it = d.items.find((x) => x.id === itemId);
-    if (!it) return;
-    it.scheduledDate = null;
+    if (!it || it.recurring) return;
+    it.scheduledDate = date;
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);
