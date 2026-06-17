@@ -6,16 +6,14 @@ import { supabase } from "./supabase";
 import { hydrate, seedIfEmpty, clearStore } from "./store";
 import TodayScreen from "./screens/TodayScreen";
 import TaskListView from "./screens/TaskListView";
-import ListScreen from "./screens/ListScreen";
 import CalendarScreen from "./screens/CalendarScreen";
 import LoginScreen from "./screens/LoginScreen";
 
-type Tab = "today" | "future" | "list" | "calendar";
+type Tab = "today" | "future" | "calendar";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "today", label: "今日やる", icon: "🌱" },
   { key: "future", label: "今後やる", icon: "⏳" },
-  { key: "list", label: "一覧", icon: "📋" },
   { key: "calendar", label: "カレンダー", icon: "📅" },
 ];
 
@@ -74,8 +72,24 @@ export default function App() {
       <main className="app__body" style={{ paddingTop: 16 }}>
         {tab === "today" && <TodayScreen />}
         {tab === "future" && <TaskListView mode="future" />}
-        {tab === "list" && <ListScreen />}
         {tab === "calendar" && <CalendarScreen />}
+
+        <footer
+          style={{
+            marginTop: 32,
+            paddingTop: 12,
+            borderTop: "1px solid var(--line)",
+            textAlign: "center",
+          }}
+        >
+          <button
+            className="btn--ghost btn"
+            style={{ fontSize: 12 }}
+            onClick={() => supabase.auth.signOut()}
+          >
+            ログアウト
+          </button>
+        </footer>
       </main>
 
       <nav className="tabbar">

@@ -1,17 +1,18 @@
 // 今日やる / 今後やる の共通ビュー。mode で振る舞いを切り替える。
-// 3a: まずは mode="today" を、これまでの今日画面と同じ挙動で実装。
-//     今日固有の部分（習慣・達成数・「今日やることを選ぶ」）は mode === "today" で囲い、
-//     3b で mode="future" を差し込めるようにしてある。
+// 追加・編集・削除もここで行う（旧「一覧」タブの機能を引き継いだ）。
 import { useEffect, useRef, useState } from "react";
 import {
   useStore,
   todayStr,
+  addItem,
   addToToday,
   removeFromToday,
   addStep,
   toggleStep,
   deleteStep,
   deleteItem,
+  editItem,
+  itemToInput,
   completeItem,
   reopenItem,
   isDoneToday,
@@ -19,6 +20,7 @@ import {
 } from "../store";
 import type { DB, Item } from "../types";
 import { TagChip } from "../components/TagChip";
+import ItemInput from "../components/ItemInput";
 
 type Mode = "today" | "future";
 
@@ -55,6 +57,21 @@ export default function TaskListView({ mode }: { mode: Mode }) {
 
   const date = todayStr();
 
+  // 追加：今日やるでは予定日=今日、今後やるでは未定。毎日チェック時は習慣（予定日なし）。
+  // 最初から予定日付きで作る（insert 1回。addToToday の追い書きはしない＝レース回避）。
+  function onAdd(input: string, recurring: boolean) {
+    addItem(input, recurring, mode === "today" ? date : null);
+  }
+
+  const addForm = (
+    <>
+      <p className="section-title">タスクを追加</p>
+      <div className="card">
+        <ItemInput onSubmit={onAdd} />
+      </div>
+    </>
+  );
+
   // ===== 今後やる =====
   if (mode === "future") {
     // 日付未定 or 明日以降の未完了（毎日タスクは出さない）
@@ -77,11 +94,12 @@ export default function TaskListView({ mode }: { mode: Mode }) {
 
     return (
       <div>
+        {addForm}
         <p className="section-title">今後やる</p>
         <div className="card">
           {futureItems.length === 0 ? (
             <div className="empty">
-              今後やるタスクはありません。{"\n"}「一覧」タブから追加できます。
+              今後やるタスクはありません。{"\n"}上の「タスクを追加」から書けます。
             </div>
           ) : (
             futureItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode="future" />)
@@ -117,7 +135,9 @@ export default function TaskListView({ mode }: { mode: Mode }) {
 
   return (
     <div>
-      {mode === "today" && habits.length > 0 && (
+      {addForm}
+
+      {habits.length > 0 && (
         <>
           <p className="section-title">
             毎日の習慣
@@ -126,21 +146,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           <div className="card">
             {habits.map((h) => {
               const done = isDoneToday(db, h.id);
-              return (
-                <div key={h.id} className="step">
-                  <button
-                    className={`step__check ${done ? "step__check--done" : ""}`}
-                    onClick={() => toggleRecurringToday(h.id)}
-                    aria-label={done ? "完了を取り消す" : "完了にする"}
-                  >
-                    {done ? "✓" : ""}
-                  </button>
-                  <span className={`step__label ${done ? "step__label--done" : ""}`}>
-                    <TagChip tag={h.tag} />
-                    {h.title}
-                  </span>
-                </div>
-              );
+              return <TaskRow key={h.id} item={h} db={db} mode="today" habitDone={done} />;
             })}
           </div>
         </>
@@ -148,79 +154,115 @@ export default function TaskListView({ mode }: { mode: Mode }) {
 
       <p className="section-title">
         今日のタスク
-        {mode === "today" && <Count done={taskDone} total={todayItems.length} />}
+        <Count done={taskDone} total={todayItems.length} />
       </p>
       <div className="card">
         {todayItems.length === 0 ? (
           <div className="empty">
             今日やることは、まだありません。{"\n"}
-            下のボタンから、ひとつだけ選んでみましょう。{"\n"}
+            上で追加するか、下のボタンから選んでみましょう。{"\n"}
             ひとつで十分です。
           </div>
         ) : (
-          todayItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode={mode} />)
+          todayItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode="today" />)
         )}
       </div>
 
-      {mode === "today" && (
-        <>
-          <button className="btn" style={{ width: "100%" }} onClick={() => setPicking((v) => !v)}>
-            {picking ? "閉じる" : "＋ 今日やることを選ぶ"}
-          </button>
+      <button className="btn" style={{ width: "100%" }} onClick={() => setPicking((v) => !v)}>
+        {picking ? "閉じる" : "＋ 今日やることを選ぶ"}
+      </button>
 
-          {picking && (
-            <div className="card" style={{ marginTop: 12, scrollMarginTop: 12 }} ref={pickerRef}>
-              {candidates.length === 0 ? (
-                <div className="empty" style={{ padding: 12 }}>
-                  追加できるものがありません。{"\n"}「一覧」タブで先に書けます。
-                </div>
-              ) : (
-                candidates.map((it) => (
-                  <div className="taskitem" key={it.id}>
-                    <span className="taskitem__title">
-                      <TagChip tag={it.tag} />
-                      {it.title}
-                    </span>
-                    <button
-                      className="icon-btn"
-                      title="今日に追加"
-                      aria-label="今日に追加"
-                      onClick={() => addToToday(it.id)}
-                    >
-                      🌱
-                    </button>
-                  </div>
-                ))
-              )}
+      {picking && (
+        <div className="card" style={{ marginTop: 12, scrollMarginTop: 12 }} ref={pickerRef}>
+          {candidates.length === 0 ? (
+            <div className="empty" style={{ padding: 12 }}>
+              追加できるものがありません。
             </div>
+          ) : (
+            candidates.map((it) => (
+              <div className="taskitem" key={it.id}>
+                <span className="taskitem__title">
+                  <TagChip tag={it.tag} />
+                  {it.title}
+                </span>
+                <button
+                  className="icon-btn"
+                  title="今日に追加"
+                  aria-label="今日に追加"
+                  onClick={() => addToToday(it.id)}
+                >
+                  🌱
+                </button>
+              </div>
+            ))
           )}
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-function TaskRow({ item, db, mode }: { item: Item; db: DB; mode: Mode }) {
+// habitDone は毎日の習慣行のときだけ渡す（その日の完了状態）
+function TaskRow({
+  item,
+  db,
+  mode,
+  habitDone,
+}: {
+  item: Item;
+  db: DB;
+  mode: Mode;
+  habitDone?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [stepText, setStepText] = useState("");
 
+  const isHabit = item.recurring;
   const steps = db.steps.filter((s) => s.itemId === item.id).sort((a, b) => a.order - b.order);
-  const isDone = item.status === "done";
+  const isDone = isHabit ? Boolean(habitDone) : item.status === "done";
 
   function submitStep() {
     addStep(item.id, stepText);
     setStepText("");
   }
 
+  // 編集モード：行全体を入力欄に
+  if (editing) {
+    return (
+      <div className="trow" style={{ padding: "8px 4px" }}>
+        <ItemInput
+          initialText={itemToInput(item)}
+          initialRecurring={item.recurring}
+          submitLabel="保存"
+          autoFocus
+          onSubmit={(input, recurring) => {
+            editItem(item.id, input, recurring);
+            setEditing(false);
+          }}
+        />
+        <button className="btn--ghost btn" style={{ marginTop: 6 }} onClick={() => setEditing(false)}>
+          キャンセル
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="trow">
-      {/* タスク本体の行 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 4px" }}>
-        {/* 今日やるはチェックで完了。今後やるは完了させない（3bで日付操作に置き換え） */}
+      {/* 本体の行 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px" }}>
+        {/* 今日やる（習慣含む）はチェックで完了。今後やるは完了させない。 */}
         {mode === "today" && (
           <button
             className={`step__check ${isDone ? "step__check--done" : ""}`}
-            onClick={() => (isDone ? reopenItem(item.id) : completeItem(item.id))}
+            onClick={() =>
+              isHabit
+                ? toggleRecurringToday(item.id)
+                : isDone
+                  ? reopenItem(item.id)
+                  : completeItem(item.id)
+            }
             aria-label={isDone ? "完了を取り消す" : "完了にする"}
           >
             {isDone ? "✓" : ""}
@@ -230,20 +272,20 @@ function TaskRow({ item, db, mode }: { item: Item; db: DB; mode: Mode }) {
           <TagChip tag={item.tag} />
           {item.title}
         </span>
-        {/* 完了済みは「今日完了したものは残す」仕様なので、外すボタンは出さない */}
-        {mode === "today" && !isDone && (
-          <button
-            className="icon-btn icon-btn--active"
-            title="今日から外す"
-            aria-label="今日から外す"
-            onClick={() => removeFromToday(item.id)}
-          >
-            🌱
-          </button>
-        )}
-        {/* 今後やる：背景なし🌱で「今日やるにする」＋削除 */}
-        {mode === "future" && (
-          <span className="icon-actions">
+        <span className="icon-actions">
+          {/* 今日やる：完了前のみ「今日から外す」。習慣は外せない（予定日を持たない）。 */}
+          {mode === "today" && !isHabit && !isDone && (
+            <button
+              className="icon-btn icon-btn--active"
+              title="今日から外す"
+              aria-label="今日から外す"
+              onClick={() => removeFromToday(item.id)}
+            >
+              🌱
+            </button>
+          )}
+          {/* 今後やる：背景なし🌱で「今日やるにする」 */}
+          {mode === "future" && (
             <button
               className="icon-btn"
               title="今日やるにする"
@@ -252,17 +294,25 @@ function TaskRow({ item, db, mode }: { item: Item; db: DB; mode: Mode }) {
             >
               🌱
             </button>
-            <button
-              className="icon-btn icon-btn--ghost"
-              style={{ fontSize: 20 }}
-              title="削除"
-              aria-label="削除"
-              onClick={() => deleteItem(item.id)}
-            >
-              ×
-            </button>
-          </span>
-        )}
+          )}
+          <button
+            className="icon-btn icon-btn--ghost"
+            title="編集"
+            aria-label="編集"
+            onClick={() => setEditing(true)}
+          >
+            ✏️
+          </button>
+          <button
+            className="icon-btn icon-btn--ghost"
+            style={{ fontSize: 20 }}
+            title="削除"
+            aria-label="削除"
+            onClick={() => deleteItem(item.id)}
+          >
+            ×
+          </button>
+        </span>
       </div>
 
       {/* ステップ（あれば表示） */}
@@ -295,30 +345,31 @@ function TaskRow({ item, db, mode }: { item: Item; db: DB; mode: Mode }) {
         </div>
       )}
 
-      {/* 「小さな一歩を追加」を押したときだけ入力欄が出る */}
-      {adding ? (
-        <div className="row" style={{ paddingLeft: 30, marginBottom: 10 }}>
-          <input
-            type="text"
-            placeholder="例：まずは布団から出る"
-            value={stepText}
-            autoFocus
-            onChange={(e) => setStepText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submitStep()}
-          />
-          <button className="btn btn--small" style={{ flexShrink: 0 }} onClick={submitStep}>
-            ＋
+      {/* 「小さな一歩を追加」を押したときだけ入力欄が出る（習慣には出さない） */}
+      {!isHabit &&
+        (adding ? (
+          <div className="row" style={{ paddingLeft: 30, marginBottom: 10 }}>
+            <input
+              type="text"
+              placeholder="例：まずは布団から出る"
+              value={stepText}
+              autoFocus
+              onChange={(e) => setStepText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submitStep()}
+            />
+            <button className="btn btn--small" style={{ flexShrink: 0 }} onClick={submitStep}>
+              ＋
+            </button>
+          </div>
+        ) : (
+          <button
+            className="btn--ghost btn"
+            style={{ padding: "0 0 10px 30px", fontSize: 13 }}
+            onClick={() => setAdding(true)}
+          >
+            ＋ 小さな一歩を追加する
           </button>
-        </div>
-      ) : (
-        <button
-          className="btn--ghost btn"
-          style={{ padding: "0 0 10px 30px", fontSize: 13 }}
-          onClick={() => setAdding(true)}
-        >
-          ＋ 小さな一歩を追加する
-        </button>
-      )}
+        ))}
     </div>
   );
 }

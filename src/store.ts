@@ -115,7 +115,11 @@ export function allTags(d: DB): string[] {
 
 // --- アイテム ---
 
-export function addItem(input: string, recurring: boolean): string | null {
+export function addItem(
+  input: string,
+  recurring: boolean,
+  scheduledDate: string | null = null
+): string | null {
   const { title, tag } = parseTag(input);
   if (!title) return null;
   const item: Item = {
@@ -123,7 +127,8 @@ export function addItem(input: string, recurring: boolean): string | null {
     title,
     tag,
     recurring,
-    scheduledDate: null,
+    // 毎日タスクは予定日を持たない。それ以外は渡された予定日（今日やる追加なら今日）。
+    scheduledDate: recurring ? null : scheduledDate,
     status: "open",
     createdAt: now(),
   };
