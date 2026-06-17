@@ -1,5 +1,5 @@
 // カレンダー画面：月表示で「できた数」が見える。日付を押すとその日のできたこと一覧。
-// メモはその日に1つだけ書ける。
+// メモはその日に1つ書ける。メモだけの一覧表示にも切り替えられる。
 import { useState } from "react";
 import { useStore, todayStr, logsForDate, doneCountByDate, getDayNote, setDayNote } from "../store";
 import { TagChip } from "./ListScreen";
@@ -20,14 +20,63 @@ function formatTime(iso: string): string {
 export default function CalendarScreen() {
   const db = useStore();
   const today = todayStr();
+  const [view, setView] = useState<"calendar" | "notes">("calendar");
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() }; // month: 0-11
   });
   const [selected, setSelected] = useState<string>(today);
 
-  const counts = doneCountByDate(db);
+  // メモ一覧
+  if (view === "notes") {
+    const notes = db.dayNotes
+      .filter((n) => n.note.trim())
+      .slice()
+      .sort((a, b) => b.date.localeCompare(a.date));
+    return (
+      <div>
+        <p
+          className="section-title"
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}
+        >
+          <span>メモ一覧</span>
+          <button
+            className="btn--ghost btn"
+            style={{ fontSize: 12, padding: 0, fontWeight: 400 }}
+            onClick={() => setView("calendar")}
+          >
+            ← カレンダー
+          </button>
+        </p>
+        <div className="card">
+          {notes.length === 0 ? (
+            <div className="empty" style={{ padding: 16 }}>
+              メモはまだありません。
+            </div>
+          ) : (
+            notes.map((n) => (
+              <div
+                key={n.id}
+                className="taskitem"
+                style={{ display: "block", cursor: "pointer" }}
+                onClick={() => {
+                  setSelected(n.date);
+                  setView("calendar");
+                }}
+              >
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {formatJpDate(n.date)}
+                </div>
+                <div style={{ whiteSpace: "pre-wrap", marginTop: 2 }}>{n.note}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
 
+  const counts = doneCountByDate(db);
   const firstDay = new Date(cursor.year, cursor.month, 1);
   const startDow = firstDay.getDay();
   const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
@@ -89,7 +138,19 @@ export default function CalendarScreen() {
         )}
       </div>
 
-      <p className="section-title">{formatJpDate(selected)}</p>
+      <p
+        className="section-title"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}
+      >
+        <span>{formatJpDate(selected)}</span>
+        <button
+          className="btn--ghost btn"
+          style={{ fontSize: 12, padding: 0, fontWeight: 400 }}
+          onClick={() => setView("notes")}
+        >
+          メモを一覧で見る
+        </button>
+      </p>
       <div className="card">
         <DayMemo key={selected} date={selected} />
 
@@ -120,7 +181,7 @@ function DayMemo({ date }: { date: string }) {
     <div style={{ marginBottom: 8 }}>
       <textarea
         rows={2}
-        placeholder="今日のメモ（1日に1つ）"
+        placeholder="今日のメモ"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => setDayNote(date, text)}

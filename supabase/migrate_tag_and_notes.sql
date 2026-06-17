@@ -34,3 +34,6 @@ alter table ippo.day_notes enable row level security;
 drop policy if exists "own day_notes" on ippo.day_notes;
 create policy "own day_notes" on ippo.day_notes
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- API（PostgREST）のスキーマキャッシュを更新して、すぐ使えるようにする
+notify pgrst, 'reload schema';

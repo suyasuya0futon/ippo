@@ -19,7 +19,7 @@ export default function ItemInput({
   initialText = "",
   initialRecurring = false,
   placeholder = "やること（例：GUコート袖縫う #裁縫）",
-  submitLabel = "追加",
+  submitLabel = "＋",
   showRecurring = true,
   autoFocus = false,
 }: Props) {
@@ -64,7 +64,7 @@ export default function ItemInput({
             if (e.key === "Enter") submit();
           }}
         />
-        <button className="btn btn--primary" onClick={submit}>
+        <button className="btn" style={{ flexShrink: 0 }} onClick={submit}>
           {submitLabel}
         </button>
       </div>

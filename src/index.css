@@ -176,6 +176,41 @@ button {
   font-size: 13px;
 }
 
+/* 丸いアイコンボタン（🌱 ✏️ ×）。縦横そろえて正円に。 */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.icon-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-soft);
+}
+
+.icon-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 input[type="text"],
 input[type="password"],
 textarea {

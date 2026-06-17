@@ -143,41 +143,35 @@ function ItemRow({ item, inToday }: { item: Item; inToday: boolean }) {
         <TagChip tag={item.tag} />
         {item.title}
       </span>
-      {!item.recurring && (
+      <span className="icon-actions">
+        {!item.recurring && (
+          <button
+            className={`icon-btn ${inToday ? "icon-btn--active" : ""}`}
+            title={inToday ? "今日から外す" : "今日に追加"}
+            aria-label={inToday ? "今日から外す" : "今日に追加"}
+            onClick={() => (inToday ? removeFromToday(item.id) : addToToday(item.id))}
+          >
+            🌱
+          </button>
+        )}
         <button
-          className="btn"
-          style={{
-            borderRadius: 999,
-            padding: "4px 9px",
-            fontSize: 16,
-            background: inToday ? "var(--accent)" : "var(--surface-2)",
-            borderColor: inToday ? "var(--accent)" : "var(--line)",
-          }}
-          title={inToday ? "今日から外す" : "今日に追加"}
-          aria-label={inToday ? "今日から外す" : "今日に追加"}
-          onClick={() => (inToday ? removeFromToday(item.id) : addToToday(item.id))}
+          className="icon-btn icon-btn--ghost"
+          title="編集"
+          aria-label="編集"
+          onClick={() => setEditing(true)}
         >
-          🌱
+          ✏️
         </button>
-      )}
-      <button
-        className="btn--ghost btn"
-        style={{ padding: "4px 6px", fontSize: 15 }}
-        title="編集"
-        aria-label="編集"
-        onClick={() => setEditing(true)}
-      >
-        ✏️
-      </button>
-      <button
-        className="btn--ghost btn"
-        style={{ padding: "2px 8px", fontSize: 20, lineHeight: 1 }}
-        title="削除"
-        aria-label="削除"
-        onClick={() => deleteItem(item.id)}
-      >
-        ×
-      </button>
+        <button
+          className="icon-btn icon-btn--ghost"
+          style={{ fontSize: 20 }}
+          title="削除"
+          aria-label="削除"
+          onClick={() => deleteItem(item.id)}
+        >
+          ×
+        </button>
+      </span>
     </div>
   );
 }
