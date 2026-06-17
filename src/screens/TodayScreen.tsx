@@ -1,6 +1,6 @@
 // 今日画面：毎日の習慣も今日のタスクも「チェック付きリスト」で統一。
 // 頭の○を押すと完了。タスクは「小さく分ける」で小さなステップに砕ける。
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useStore,
   todayStr,
@@ -41,6 +41,12 @@ function Count({ done, total }: { done: number; total: number }) {
 export default function TodayScreen() {
   const db = useStore();
   const [picking, setPicking] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // 「今日やることを選ぶ」を開いたら、その候補リストへスクロール
+  useEffect(() => {
+    if (picking) pickerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [picking]);
 
   const date = todayStr();
   const habits = db.items.filter((i) => i.recurring).sort(byTagDesc);
@@ -111,7 +117,7 @@ export default function TodayScreen() {
       </button>
 
       {picking && (
-        <div className="card" style={{ marginTop: 12 }}>
+        <div className="card" style={{ marginTop: 12, scrollMarginTop: 12 }} ref={pickerRef}>
           {candidates.length === 0 ? (
             <div className="empty" style={{ padding: 12 }}>
               追加できるものがありません。{"\n"}「一覧」タブで先に書けます。
@@ -207,7 +213,7 @@ function TodayTaskRow({ item, db }: { item: Item; db: DB }) {
         <div className="row" style={{ paddingLeft: 30, marginBottom: 10 }}>
           <input
             type="text"
-            placeholder="例：立ち上がる"
+            placeholder="例：まずは布団から出る"
             value={stepText}
             autoFocus
             onChange={(e) => setStepText(e.target.value)}
@@ -223,7 +229,7 @@ function TodayTaskRow({ item, db }: { item: Item; db: DB }) {
           style={{ padding: "0 0 10px 30px", fontSize: 13 }}
           onClick={() => setAdding(true)}
         >
-          ＋ 小さく分ける
+          ＋ 小さなステップに分ける
         </button>
       )}
     </div>

@@ -18,7 +18,7 @@ export default function ItemInput({
   onSubmit,
   initialText = "",
   initialRecurring = false,
-  placeholder = "やること（例：GUコート袖縫う #裁縫）",
+  placeholder = "例：ジムに行く #健康",
   submitLabel = "＋",
   showRecurring = true,
   autoFocus = false,

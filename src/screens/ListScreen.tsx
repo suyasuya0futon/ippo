@@ -48,15 +48,25 @@ export default function ListScreen() {
   const todayIds = new Set(db.today.filter((t) => t.date === todayStr()).map((t) => t.itemId));
 
   const filtered = db.items.filter((it) => (filter ? it.tag === filter : true));
-  const tasks = filtered.filter((it) => !it.recurring).sort(byTag);
+  // 今日やるマークが上 → その中でタグ降順
+  const tasks = filtered
+    .filter((it) => !it.recurring)
+    .sort((a, b) => {
+      const at = todayIds.has(a.id) ? 0 : 1;
+      const bt = todayIds.has(b.id) ? 0 : 1;
+      if (at !== bt) return at - bt;
+      return byTag(a, b);
+    });
   const habits = filtered.filter((it) => it.recurring).sort(byTag);
 
   return (
     <div>
-      <p className="section-title">追加する</p>
+      <p className="section-title">タスクを追加</p>
       <div className="card">
         <ItemInput onSubmit={(input, recurring) => addItem(input, recurring)} />
       </div>
+
+      <p className="section-title">タスク一覧</p>
 
       {tags.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 2px 4px" }}>
