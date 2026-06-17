@@ -1,8 +1,17 @@
 // カレンダー画面：月表示で「できた数」が見える。日付を押すとその日のできたこと一覧。
 // メモはその日に1つ書ける。メモだけの一覧表示にも切り替えられる。
 import { useState } from "react";
-import { useStore, todayStr, logsForDate, doneCountByDate, getDayNote, setDayNote } from "../store";
+import {
+  useStore,
+  todayStr,
+  logsForDate,
+  doneCountByDate,
+  getDayNote,
+  setDayNote,
+  addItem,
+} from "../store";
 import { TagChip } from "../components/TagChip";
+import ItemInput from "../components/ItemInput";
 import type { DoneLog } from "../types";
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
@@ -99,6 +108,10 @@ export default function CalendarScreen() {
   }
 
   const logs = logsForDate(db, selected);
+  // この日に予定されている未完了タスク
+  const scheduledTasks = db.items.filter(
+    (i) => !i.recurring && i.status === "open" && i.scheduledDate === selected
+  );
 
   return (
     <div>
@@ -153,20 +166,41 @@ export default function CalendarScreen() {
       </p>
       <div className="card">
         <DayMemo key={selected} date={selected} />
+      </div>
 
+      <p className="section-title">この日の予定</p>
+      <div className="card">
+        {scheduledTasks.length === 0 ? (
+          <div className="empty" style={{ padding: "12px 8px" }}>
+            予定はありません。
+          </div>
+        ) : (
+          scheduledTasks.map((t) => (
+            <div className="taskitem" key={t.id}>
+              <span className="taskitem__title">
+                <TagChip tag={t.tag} />
+                {t.title}
+              </span>
+            </div>
+          ))
+        )}
+        <div style={{ marginTop: 10 }}>
+          <ItemInput
+            showRecurring={false}
+            placeholder="この日に予定を追加"
+            onSubmit={(input) => addItem(input, false, selected)}
+          />
+        </div>
+      </div>
+
+      <p className="section-title">できたこと</p>
+      <div className="card">
         {logs.length === 0 ? (
-          <div className="empty" style={{ padding: "16px 8px 4px" }}>
+          <div className="empty" style={{ padding: "12px 8px" }}>
             この日の「できたこと」はまだありません。
           </div>
         ) : (
-          <>
-            <p className="muted" style={{ fontSize: 13, margin: "4px 0 0" }}>
-              できたこと {logs.length} 件
-            </p>
-            {logs.map((log) => (
-              <LogRow key={log.id} log={log} />
-            ))}
-          </>
+          logs.map((log) => <LogRow key={log.id} log={log} />)
         )}
       </div>
     </div>
