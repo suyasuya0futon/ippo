@@ -36,14 +36,6 @@ export interface Step {
   doneAt?: string;
 }
 
-/** 今日やると選んだアイテム（毎日の習慣は選ばなくても自動で出るので入らない） */
-export interface TodayItem {
-  id: ID;
-  date: string; // "YYYY-MM-DD"
-  itemId: ID;
-  order: number;
-}
-
 /**
  * できたことの記録。
  * title と tag をコピーして持つので、元のアイテムを消してもカレンダーには残り続ける。
@@ -69,7 +61,6 @@ export interface DayNote {
 export interface DB {
   items: Item[];
   steps: Step[];
-  today: TodayItem[];
   doneLogs: DoneLog[];
   dayNotes: DayNote[];
 }
@@ -77,7 +68,6 @@ export interface DB {
 export const emptyDB: DB = {
   items: [],
   steps: [],
-  today: [],
   doneLogs: [],
   dayNotes: [],
 };

@@ -10,7 +10,6 @@ import {
   type DB,
   type Item,
   type Step,
-  type TodayItem,
   type DoneLog,
   type DayNote,
 } from "./types";
@@ -142,6 +141,8 @@ export function editItem(itemId: string, input: string, recurring: boolean) {
     it.title = title;
     it.tag = tag;
     it.recurring = recurring;
+    // 毎日タスクは予定日を持たない（不変条件）
+    if (recurring) it.scheduledDate = null;
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);
@@ -151,7 +152,6 @@ export function deleteItem(itemId: string) {
   optimistic((d) => {
     d.items = d.items.filter((i) => i.id !== itemId);
     d.steps = d.steps.filter((s) => s.itemId !== itemId);
-    d.today = d.today.filter((t) => t.itemId !== itemId);
     // できたことログ（DoneLog）はあえて残す。見返す記録として残す。
   });
   void remote.deleteItemRow(itemId);
@@ -160,7 +160,7 @@ export function deleteItem(itemId: string) {
 /** 一度きりのアイテムを「できた」にする */
 export function completeItem(itemId: string) {
   const current = db.items.find((x) => x.id === itemId);
-  if (!current || current.status === "done") return;
+  if (!current || current.recurring || current.status === "done") return;
   const doneAt = now();
   const log: DoneLog = {
     id: uid(),
@@ -198,7 +198,8 @@ export function reopenItem(itemId: string) {
 
 // --- 毎日の習慣（recurring なアイテム） ---
 
-export function isRecurringDoneToday(d: DB, itemId: string, date: string = todayStr()): boolean {
+/** そのアイテム（毎日タスク・一度きり問わず）が指定日に完了済みか。完了は doneLog で判定する。 */
+export function isDoneToday(d: DB, itemId: string, date: string = todayStr()): boolean {
   return d.doneLogs.some((l) => l.refType === "item" && l.refId === itemId && l.date === date);
 }
 
@@ -231,23 +232,37 @@ export function toggleRecurringToday(itemId: string) {
   }
 }
 
-// --- 今日やること ---
+// --- 今日やること（予定日 scheduledDate で管理） ---
 
-export function addToToday(itemId: string) {
-  const date = todayStr();
-  if (db.today.some((t) => t.date === date && t.itemId === itemId)) return;
-  const order = db.today.filter((t) => t.date === date).length;
-  const entry: TodayItem = { id: uid(), itemId, date, order };
-  optimistic((d) => d.today.push(entry));
-  void remote.insertToday(entry);
+/**
+ * その一度きりタスクが「今日やる」に出るか。
+ * 予定日が今日以前なら出す（過去日の繰り越しも含む）。毎日タスクは対象外。
+ */
+export function isInToday(item: Item, date: string = todayStr()): boolean {
+  return !item.recurring && item.scheduledDate != null && item.scheduledDate <= date;
 }
 
-export function removeFromToday(itemId: string) {
+/** 今日やるにする：予定日を今日にする（毎日タスクは予定日を持たない） */
+export function addToToday(itemId: string) {
   const date = todayStr();
   optimistic((d) => {
-    d.today = d.today.filter((t) => !(t.date === date && t.itemId === itemId));
+    const it = d.items.find((x) => x.id === itemId);
+    if (!it || it.recurring) return;
+    it.scheduledDate = date;
   });
-  void remote.deleteTodayByItem(itemId, date);
+  const updated = db.items.find((x) => x.id === itemId);
+  if (updated) void remote.updateItem(updated);
+}
+
+/** 今日やるから外す：予定日を未定（null）に戻す */
+export function removeFromToday(itemId: string) {
+  optimistic((d) => {
+    const it = d.items.find((x) => x.id === itemId);
+    if (!it) return;
+    it.scheduledDate = null;
+  });
+  const updated = db.items.find((x) => x.id === itemId);
+  if (updated) void remote.updateItem(updated);
 }
 
 // --- 手順（ステップ） ---

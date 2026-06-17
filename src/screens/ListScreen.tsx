@@ -4,7 +4,6 @@
 import { useState } from "react";
 import {
   useStore,
-  todayStr,
   allTags,
   addItem,
   editItem,
@@ -12,6 +11,7 @@ import {
   addToToday,
   removeFromToday,
   itemToInput,
+  isInToday,
 } from "../store";
 import { supabase } from "../supabase";
 import type { Item } from "../types";
@@ -45,15 +45,14 @@ export default function ListScreen() {
   const [filter, setFilter] = useState<string | null>(null);
 
   const tags = allTags(db);
-  const todayIds = new Set(db.today.filter((t) => t.date === todayStr()).map((t) => t.itemId));
 
   const filtered = db.items.filter((it) => (filter ? it.tag === filter : true));
   // 今日やるマークが上 → その中でタグ降順
   const tasks = filtered
     .filter((it) => !it.recurring)
     .sort((a, b) => {
-      const at = todayIds.has(a.id) ? 0 : 1;
-      const bt = todayIds.has(b.id) ? 0 : 1;
+      const at = isInToday(a) ? 0 : 1;
+      const bt = isInToday(b) ? 0 : 1;
       if (at !== bt) return at - bt;
       return byTag(a, b);
     });
@@ -98,7 +97,7 @@ export default function ListScreen() {
               : "まだ何もありません。\nひとつ、小さなことから書いてみましょう。"}
           </div>
         ) : (
-          tasks.map((it) => <ItemRow key={it.id} item={it} inToday={todayIds.has(it.id)} />)
+          tasks.map((it) => <ItemRow key={it.id} item={it} inToday={isInToday(it)} />)
         )}
       </div>
 

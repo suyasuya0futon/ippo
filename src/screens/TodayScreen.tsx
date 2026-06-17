@@ -11,7 +11,7 @@ import {
   deleteStep,
   completeItem,
   reopenItem,
-  isRecurringDoneToday,
+  isDoneToday,
   toggleRecurringToday,
 } from "../store";
 import type { DB, Item } from "../types";
@@ -51,19 +51,26 @@ export default function TodayScreen() {
   const date = todayStr();
   const habits = db.items.filter((i) => i.recurring).sort(byTagDesc);
 
-  const todayItems = db.today
-    .filter((t) => t.date === date)
-    .map((t) => db.items.find((i) => i.id === t.itemId))
-    .filter((i): i is Item => Boolean(i) && !i!.recurring)
+  // 今日やる = 予定日が今日以前の未完了 ∪ 今日完了したもの（打ち消し線で残す）
+  const todayItems = db.items
+    .filter(
+      (i) =>
+        !i.recurring &&
+        ((i.scheduledDate != null && i.scheduledDate <= date && i.status === "open") ||
+          isDoneToday(db, i.id))
+    )
     .sort(byTagDesc);
 
-  const todayIds = new Set(todayItems.map((i) => i.id));
+  // 候補 = 今日やるに出ていない未完了の一度きりタスク（予定日が未定 or 未来）
   const candidates = db.items.filter(
-    (i) => !i.recurring && i.status === "open" && !todayIds.has(i.id)
+    (i) =>
+      !i.recurring &&
+      i.status === "open" &&
+      !(i.scheduledDate != null && i.scheduledDate <= date)
   );
 
-  const habitsDone = habits.filter((h) => isRecurringDoneToday(db, h.id)).length;
-  const taskDone = todayItems.filter((i) => i.status === "done").length;
+  const habitsDone = habits.filter((h) => isDoneToday(db, h.id)).length;
+  const taskDone = todayItems.filter((i) => isDoneToday(db, i.id)).length;
 
   return (
     <div>
@@ -75,7 +82,7 @@ export default function TodayScreen() {
           </p>
           <div className="card">
             {habits.map((h) => {
-              const done = isRecurringDoneToday(db, h.id);
+              const done = isDoneToday(db, h.id);
               return (
                 <div key={h.id} className="step">
                   <button
@@ -173,14 +180,17 @@ function TodayTaskRow({ item, db }: { item: Item; db: DB }) {
           <TagChip tag={item.tag} />
           {item.title}
         </span>
-        <button
-          className="icon-btn icon-btn--active"
-          title="今日から外す"
-          aria-label="今日から外す"
-          onClick={() => removeFromToday(item.id)}
-        >
-          🌱
-        </button>
+        {/* 完了済みは「今日完了したものは残す」仕様なので、外すボタンは出さない */}
+        {!isDone && (
+          <button
+            className="icon-btn icon-btn--active"
+            title="今日から外す"
+            aria-label="今日から外す"
+            onClick={() => removeFromToday(item.id)}
+          >
+            🌱
+          </button>
+        )}
       </div>
 
       {/* ステップ（あれば表示） */}

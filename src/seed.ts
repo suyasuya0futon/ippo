@@ -25,21 +25,17 @@ export function seedDB(): DB {
     ["豆腐を買う", "買物", false, true],
   ];
 
-  let order = 0;
   for (const [title, tag, recurring, inToday] of rows) {
     const item: Item = {
       id: id(),
       title,
       tag,
       recurring,
-      scheduledDate: inToday ? date : null,
+      scheduledDate: inToday ? date : null, // 今日に出すものは予定日=今日
       status: "open",
       createdAt: now(),
     };
     db.items.push(item);
-    if (inToday) {
-      db.today.push({ id: id(), date, itemId: item.id, order: order++ });
-    }
   }
 
   return db;

@@ -8,7 +8,6 @@ import {
   type DB,
   type Item,
   type Step,
-  type TodayItem,
   type DoneLog,
   type DayNote,
 } from "./types";
@@ -33,7 +32,6 @@ type StepRow = {
   done: boolean;
   done_at: string | null;
 };
-type TodayRow = { id: string; item_id: string; date: string; sort_order: number };
 type LogRow = {
   id: string;
   date: string;
@@ -62,12 +60,6 @@ const toStep = (r: StepRow): Step => ({
   order: r.sort_order,
   done: r.done,
   doneAt: r.done_at ?? undefined,
-});
-const toToday = (r: TodayRow): TodayItem => ({
-  id: r.id,
-  itemId: r.item_id,
-  date: r.date,
-  order: r.sort_order,
 });
 const toLog = (r: LogRow): DoneLog => ({
   id: r.id,
@@ -100,12 +92,6 @@ const stepRow = (s: Step) => ({
   done: s.done,
   done_at: s.doneAt ?? null,
 });
-const todayRow = (t: TodayItem) => ({
-  id: t.id,
-  item_id: t.itemId,
-  date: t.date,
-  sort_order: t.order,
-});
 const logRow = (l: DoneLog) => ({
   id: l.id,
   date: l.date,
@@ -125,21 +111,18 @@ function warn(where: string, error: unknown) {
 
 export async function fetchAll(): Promise<DB> {
   const db: DB = structuredClone(emptyDB);
-  const [items, steps, today, logs, notes] = await Promise.all([
+  const [items, steps, logs, notes] = await Promise.all([
     supabase.from("items").select("*"),
     supabase.from("steps").select("*"),
-    supabase.from("today_items").select("*"),
     supabase.from("done_logs").select("*"),
     supabase.from("day_notes").select("*"),
   ]);
   if (items.error) warn("fetch items", items.error);
   if (steps.error) warn("fetch steps", steps.error);
-  if (today.error) warn("fetch today", today.error);
   if (logs.error) warn("fetch logs", logs.error);
   if (notes.error) warn("fetch day_notes", notes.error);
   db.items = (items.data ?? []).map((r) => toItem(r as ItemRow));
   db.steps = (steps.data ?? []).map((r) => toStep(r as StepRow));
-  db.today = (today.data ?? []).map((r) => toToday(r as TodayRow));
   db.doneLogs = (logs.data ?? []).map((r) => toLog(r as LogRow));
   db.dayNotes = (notes.data ?? []).map((r) => toDayNote(r as DayNoteRow));
   return db;
@@ -152,9 +135,6 @@ export async function bulkInsert(db: DB) {
   }
   if (db.steps.length) {
     warn("seed steps", (await supabase.from("steps").insert(db.steps.map(stepRow))).error);
-  }
-  if (db.today.length) {
-    warn("seed today", (await supabase.from("today_items").insert(db.today.map(todayRow))).error);
   }
   if (db.doneLogs.length) {
     warn("seed logs", (await supabase.from("done_logs").insert(db.doneLogs.map(logRow))).error);
@@ -192,16 +172,6 @@ export async function deleteStepRow(id: string) {
   warn(
     "deleteStep logs",
     (await supabase.from("done_logs").delete().eq("ref_id", id).eq("ref_type", "step")).error
-  );
-}
-
-export async function insertToday(t: TodayItem) {
-  warn("insertToday", (await supabase.from("today_items").insert(todayRow(t))).error);
-}
-export async function deleteTodayByItem(itemId: string, date: string) {
-  warn(
-    "deleteToday",
-    (await supabase.from("today_items").delete().eq("item_id", itemId).eq("date", date)).error
   );
 }
 
