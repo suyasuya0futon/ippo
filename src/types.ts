@@ -10,13 +10,14 @@ export type RefType = "item" | "step";
 /**
  * やること。タスクも習慣も買い物も、ぜんぶこれひとつ。
  * - recurring: true なら「毎日くりかえす（習慣）」。今日タブに自動で出る。
- * - tags: 任意・複数。#裁縫 のように書いて付ける。管理画面は持たない。
+ * - tag: 任意で1個だけ。#裁縫 のように書いて付ける。管理画面は持たない。
  */
 export interface Item {
   id: ID;
   title: string;
   tag: string | null; // タグは1個だけ。無ければ null。
   recurring: boolean;
+  scheduledDate: string | null; // "YYYY-MM-DD"。予定日。未定なら null。毎日タスクは常に null。
   status: "open" | "done"; // recurring の場合は使わない（日ごとに doneLogs で管理）
   createdAt: string;
   doneAt?: string;

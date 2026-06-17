@@ -20,6 +20,7 @@ type ItemRow = {
   title: string;
   tag: string | null;
   recurring: boolean;
+  scheduled_date: string | null;
   status: "open" | "done";
   created_at: string;
   done_at: string | null;
@@ -49,6 +50,7 @@ const toItem = (r: ItemRow): Item => ({
   title: r.title,
   tag: r.tag ?? null,
   recurring: r.recurring,
+  scheduledDate: r.scheduled_date ?? null,
   status: r.status,
   createdAt: r.created_at,
   doneAt: r.done_at ?? undefined,
@@ -85,6 +87,7 @@ const itemRow = (i: Item) => ({
   title: i.title,
   tag: i.tag ?? null,
   recurring: i.recurring,
+  scheduled_date: i.scheduledDate ?? null,
   status: i.status,
   created_at: i.createdAt,
   done_at: i.doneAt ?? null,
@@ -142,7 +145,7 @@ export async function fetchAll(): Promise<DB> {
   return db;
 }
 
-/** 初回ログイン時、ローカルにあった or 初期データを丸ごとアップロードする */
+/** 初回ログイン時、初期データを丸ごとアップロードする */
 export async function bulkInsert(db: DB) {
   if (db.items.length) {
     warn("seed items", (await supabase.from("items").insert(db.items.map(itemRow))).error);

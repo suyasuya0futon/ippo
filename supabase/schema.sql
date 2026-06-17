@@ -15,6 +15,7 @@ create table if not exists ippo.items (
   title text not null,
   tag text,
   recurring boolean not null default false,
+  scheduled_date date,
   status text not null default 'open',
   created_at timestamptz not null default now(),
   done_at timestamptz

@@ -32,6 +32,7 @@ export function seedDB(): DB {
       title,
       tag,
       recurring,
+      scheduledDate: inToday ? date : null,
       status: "open",
       createdAt: now(),
     };

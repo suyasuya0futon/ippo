@@ -119,7 +119,15 @@ export function allTags(d: DB): string[] {
 export function addItem(input: string, recurring: boolean): string | null {
   const { title, tag } = parseTag(input);
   if (!title) return null;
-  const item: Item = { id: uid(), title, tag, recurring, status: "open", createdAt: now() };
+  const item: Item = {
+    id: uid(),
+    title,
+    tag,
+    recurring,
+    scheduledDate: null,
+    status: "open",
+    createdAt: now(),
+  };
   optimistic((d) => d.items.push(item));
   void remote.insertItem(item);
   return item.id;
