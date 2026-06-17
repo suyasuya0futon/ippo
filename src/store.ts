@@ -54,26 +54,13 @@ export async function hydrate() {
   emit();
 }
 
-/** まだ何も無ければ、ローカルにあった分 or 初期データをアップロードする */
+/** まだ何も無ければ、初期データをアップロードする */
 export async function seedIfEmpty() {
   if (db.items.length > 0) return;
-  const initial = localInitial() ?? seedDB();
+  const initial = seedDB();
   await remote.bulkInsert(initial);
   db = initial;
   emit();
-}
-
-/** 以前 localStorage に持っていたデータがあれば、それを初期データとして使う */
-function localInitial(): DB | null {
-  try {
-    const raw = localStorage.getItem("ippo:db:v2");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<DB>;
-    if (!parsed.items || parsed.items.length === 0) return null;
-    return { ...structuredClone(emptyDB), ...parsed };
-  } catch {
-    return null;
-  }
 }
 
 /** ログアウト時にメモリを空にする */
