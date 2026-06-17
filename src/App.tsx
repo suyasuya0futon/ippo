@@ -1,16 +1,14 @@
-// アプリの枠。下のタブで「今日」「管理」「カレンダー」を切り替えるだけ。
+// アプリの枠。下のタブで「今日」「一覧」「カレンダー」を切り替えるだけ。
 import { useState } from "react";
 import TodayScreen from "./screens/TodayScreen";
-import ManageScreen from "./screens/ManageScreen";
+import ListScreen from "./screens/ListScreen";
 import CalendarScreen from "./screens/CalendarScreen";
-import StockScreen from "./screens/StockScreen";
 
-type Tab = "today" | "manage" | "stock" | "calendar";
+type Tab = "today" | "list" | "calendar";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "today", label: "今日", icon: "🌱" },
-  { key: "manage", label: "管理", icon: "📋" },
-  { key: "stock", label: "ストック", icon: "🗂️" },
+  { key: "list", label: "一覧", icon: "📋" },
   { key: "calendar", label: "カレンダー", icon: "📅" },
 ];
 
@@ -26,8 +24,7 @@ export default function App() {
 
       <main className="app__body">
         {tab === "today" && <TodayScreen />}
-        {tab === "manage" && <ManageScreen />}
-        {tab === "stock" && <StockScreen />}
+        {tab === "list" && <ListScreen />}
         {tab === "calendar" && <CalendarScreen />}
       </main>
 

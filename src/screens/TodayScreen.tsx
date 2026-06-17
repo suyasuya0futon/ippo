@@ -1,4 +1,4 @@
-// 今日画面：今日やることを選び、手順を一つずつチェックしていく中心の画面。
+// 今日画面：毎日の習慣が自動で並び、今日やることを選んで手順をチェックしていく中心の画面。
 import { useState } from "react";
 import {
   useStore,
@@ -8,56 +8,61 @@ import {
   addStep,
   toggleStep,
   deleteStep,
-  completeTask,
-  reopenTask,
-  isHabitDone,
-  toggleHabitToday,
+  completeItem,
+  reopenItem,
+  isRecurringDoneToday,
+  toggleRecurringToday,
 } from "../store";
-import type { DB, Task } from "../types";
+import type { DB, Item } from "../types";
+import { TagChips } from "./ListScreen";
 
 export default function TodayScreen() {
   const db = useStore();
   const [picking, setPicking] = useState(false);
 
   const date = todayStr();
+  const habits = db.items.filter((i) => i.recurring);
+
   const todayItems = db.today
     .filter((t) => t.date === date)
-    .sort((a, b) => a.order - b.order);
+    .sort((a, b) => a.order - b.order)
+    .map((t) => db.items.find((i) => i.id === t.itemId))
+    .filter((i): i is Item => Boolean(i) && !i!.recurring);
 
-  const todayTasks = todayItems
-    .map((ti) => db.tasks.find((t) => t.id === ti.refId))
-    .filter((t): t is Task => Boolean(t));
+  const todayIds = new Set(todayItems.map((i) => i.id));
+  const candidates = db.items.filter(
+    (i) => !i.recurring && i.status === "open" && !todayIds.has(i.id)
+  );
 
-  const todayIds = new Set(todayTasks.map((t) => t.id));
-  const candidates = db.tasks.filter((t) => t.status === "open" && !todayIds.has(t.id));
-
-  const doneCount = todayTasks.filter((t) => t.status === "done").length;
+  const habitsDone = habits.filter((h) => isRecurringDoneToday(db, h.id)).length;
+  const taskDone = todayItems.filter((i) => i.status === "done").length;
 
   return (
     <div>
-      {todayTasks.length > 0 && (
+      {(habits.length > 0 || todayItems.length > 0) && (
         <p className="muted" style={{ margin: "8px 4px", fontSize: 13 }}>
-          今日のやること {todayTasks.length} 件のうち {doneCount} 件できました。
+          習慣 {habitsDone}/{habits.length}・タスク {taskDone}/{todayItems.length} できました。
         </p>
       )}
 
-      {db.habits.length > 0 && (
+      {habits.length > 0 && (
         <>
           <p className="section-title">毎日の習慣</p>
           <div className="card">
-            {db.habits.map((h) => {
-              const done = isHabitDone(db, h.id);
+            {habits.map((h) => {
+              const done = isRecurringDoneToday(db, h.id);
               return (
                 <div key={h.id} className="step">
                   <button
                     className={`step__check ${done ? "step__check--done" : ""}`}
-                    onClick={() => toggleHabitToday(h.id)}
+                    onClick={() => toggleRecurringToday(h.id)}
                     aria-label={done ? "完了を取り消す" : "完了にする"}
                   >
                     {done ? "✓" : ""}
                   </button>
                   <span className={`step__label ${done ? "step__label--done" : ""}`}>
                     {h.title}
+                    <TagChips tags={h.tags} />
                   </span>
                 </div>
               );
@@ -66,16 +71,15 @@ export default function TodayScreen() {
         </>
       )}
 
-      {db.habits.length > 0 && <p className="section-title">今日のタスク</p>}
-
-      {todayTasks.length === 0 ? (
+      <p className="section-title">今日のタスク</p>
+      {todayItems.length === 0 ? (
         <div className="empty">
           今日やることは、まだありません。{"\n"}
           下のボタンから、ひとつだけ選んでみましょう。{"\n"}
           ひとつで十分です。
         </div>
       ) : (
-        todayTasks.map((task) => <TodayCard key={task.id} task={task} db={db} />)
+        todayItems.map((item) => <TodayCard key={item.id} item={item} db={db} />)
       )}
 
       <button className="btn" style={{ width: "100%" }} onClick={() => setPicking((v) => !v)}>
@@ -86,16 +90,16 @@ export default function TodayScreen() {
         <div className="card" style={{ marginTop: 12 }}>
           {candidates.length === 0 ? (
             <div className="empty" style={{ padding: 12 }}>
-              追加できるタスクがありません。{"\n"}「管理」タブで先に登録できます。
+              追加できるものがありません。{"\n"}「一覧」タブで先に書けます。
             </div>
           ) : (
-            candidates.map((t) => (
-              <div className="taskitem" key={t.id}>
-                <span className="taskitem__title">{t.title}</span>
-                <button
-                  className="btn btn--small btn--primary"
-                  onClick={() => addToToday(t.id)}
-                >
+            candidates.map((it) => (
+              <div className="taskitem" key={it.id}>
+                <span className="taskitem__title">
+                  {it.title}
+                  <TagChips tags={it.tags} />
+                </span>
+                <button className="btn btn--small btn--primary" onClick={() => addToToday(it.id)}>
                   追加
                 </button>
               </div>
@@ -107,19 +111,18 @@ export default function TodayScreen() {
   );
 }
 
-function TodayCard({ task, db }: { task: Task; db: DB }) {
+function TodayCard({ item, db }: { item: Item; db: DB }) {
   const [stepText, setStepText] = useState("");
 
   const steps = db.steps
-    .filter((s) => s.parentType === "task" && s.parentId === task.id)
+    .filter((s) => s.itemId === item.id)
     .sort((a, b) => a.order - b.order);
 
-  // 「次の一歩」= まだ終わっていない最初の手順
   const nextStepId = steps.find((s) => !s.done)?.id;
-  const isDone = task.status === "done";
+  const isDone = item.status === "done";
 
   function submitStep() {
-    addStep(task.id, stepText);
+    addStep(item.id, stepText);
     setStepText("");
   }
 
@@ -134,9 +137,10 @@ function TodayCard({ task, db }: { task: Task; db: DB }) {
             textDecoration: isDone ? "line-through" : "none",
           }}
         >
-          {task.title}
+          {item.title}
+          <TagChips tags={item.tags} />
         </strong>
-        <button className="btn--ghost btn" onClick={() => removeFromToday(task.id)}>
+        <button className="btn--ghost btn" onClick={() => removeFromToday(item.id)}>
           今日から外す
         </button>
       </div>
@@ -189,14 +193,14 @@ function TodayCard({ task, db }: { task: Task; db: DB }) {
       </div>
 
       {isDone ? (
-        <button className="btn" style={{ width: "100%" }} onClick={() => reopenTask(task.id)}>
+        <button className="btn" style={{ width: "100%" }} onClick={() => reopenItem(item.id)}>
           「できた」を取り消す
         </button>
       ) : (
         <button
           className="btn btn--done"
           style={{ width: "100%" }}
-          onClick={() => completeTask(task.id)}
+          onClick={() => completeItem(item.id)}
         >
           できた
         </button>

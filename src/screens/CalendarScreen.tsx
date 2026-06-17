@@ -14,7 +14,7 @@ function formatTime(iso: string): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-const TYPE_LABEL: Record<string, string> = { task: "タスク", habit: "習慣", step: "一歩" };
+const TYPE_LABEL: Record<string, string> = { item: "", step: "一歩" };
 
 export default function CalendarScreen() {
   const db = useStore();
