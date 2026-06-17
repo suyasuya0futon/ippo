@@ -3,7 +3,17 @@
 // 画面側は useStore() を呼ぶだけで、最新データを受け取って自動で再描画されます。
 
 import { useSyncExternalStore } from "react";
-import { emptyDB, type DB, type Category, type Task, type Step, type DoneLog } from "./types";
+import {
+  emptyDB,
+  type DB,
+  type Category,
+  type Task,
+  type Habit,
+  type Step,
+  type DoneLog,
+  type StockItem,
+  type StockList,
+} from "./types";
 
 const STORAGE_KEY = "ippo:db:v1";
 
@@ -66,14 +76,16 @@ const COLORS = ["#7da9c9", "#9ec7a4", "#c9a9c4", "#d6b48a", "#a4b0c9", "#c99a9a"
 
 // --- カテゴリ ---
 
-export function addCategory(name: string) {
+export function addCategory(name: string): string | null {
   const trimmed = name.trim();
-  if (!trimmed) return;
+  if (!trimmed) return null;
+  const newId = id();
   update((d) => {
     const color = COLORS[d.categories.length % COLORS.length];
-    const cat: Category = { id: id(), name: trimmed, color };
+    const cat: Category = { id: newId, name: trimmed, color };
     d.categories.push(cat);
   });
+  return newId;
 }
 
 export function deleteCategory(catId: string) {
@@ -86,12 +98,13 @@ export function deleteCategory(catId: string) {
 
 // --- タスク ---
 
-export function addTask(title: string, categoryId: string | null) {
+export function addTask(title: string, categoryId: string | null): string | null {
   const trimmed = title.trim();
-  if (!trimmed) return;
+  if (!trimmed) return null;
+  const newId = id();
   update((d) => {
     const task: Task = {
-      id: id(),
+      id: newId,
       title: trimmed,
       categoryId,
       status: "open",
@@ -99,6 +112,7 @@ export function addTask(title: string, categoryId: string | null) {
     };
     d.tasks.push(task);
   });
+  return newId;
 }
 
 export function deleteTask(taskId: string) {
@@ -234,4 +248,94 @@ export function doneCountByDate(d: DB): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const l of d.doneLogs) counts[l.date] = (counts[l.date] ?? 0) + 1;
   return counts;
+}
+
+// --- 習慣（毎日など繰り返すもの） ---
+
+export function addHabit(title: string, categoryId: string | null): string | null {
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  const newId = id();
+  update((d) => {
+    const habit: Habit = {
+      id: newId,
+      title: trimmed,
+      categoryId,
+      frequency: "daily",
+      createdAt: now(),
+    };
+    d.habits.push(habit);
+  });
+  return newId;
+}
+
+export function deleteHabit(habitId: string) {
+  update((d) => {
+    d.habits = d.habits.filter((h) => h.id !== habitId);
+    // 過去の「できたこと」はあえて残す
+  });
+}
+
+/** その習慣が指定日に完了済みか */
+export function isHabitDone(d: DB, habitId: string, date: string = todayStr()): boolean {
+  return d.doneLogs.some((l) => l.refType === "habit" && l.refId === habitId && l.date === date);
+}
+
+/** 習慣の「今日できた」を切り替える。完了したらログに残し、外したらログも消す。 */
+export function toggleHabitToday(habitId: string) {
+  const date = todayStr();
+  update((d) => {
+    const h = d.habits.find((x) => x.id === habitId);
+    if (!h) return;
+    const already = d.doneLogs.some(
+      (l) => l.refType === "habit" && l.refId === habitId && l.date === date
+    );
+    if (already) {
+      d.doneLogs = d.doneLogs.filter(
+        (l) => !(l.refType === "habit" && l.refId === habitId && l.date === date)
+      );
+    } else {
+      d.doneLogs.push({
+        id: id(),
+        date,
+        refType: "habit",
+        refId: h.id,
+        title: h.title,
+        doneAt: now(),
+      });
+    }
+  });
+}
+
+// --- ストック情報（買い物・視聴・行きたい場所・メモ） ---
+
+export function addStock(list: StockList, title: string): string | null {
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  const newId = id();
+  update((d) => {
+    const item: StockItem = {
+      id: newId,
+      list,
+      title: trimmed,
+      done: false,
+      createdAt: now(),
+    };
+    d.stock.push(item);
+  });
+  return newId;
+}
+
+export function toggleStock(stockId: string) {
+  update((d) => {
+    const s = d.stock.find((x) => x.id === stockId);
+    if (!s) return;
+    s.done = !s.done;
+  });
+}
+
+export function deleteStock(stockId: string) {
+  update((d) => {
+    d.stock = d.stock.filter((s) => s.id !== stockId);
+  });
 }

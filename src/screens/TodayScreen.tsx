@@ -10,6 +10,8 @@ import {
   deleteStep,
   completeTask,
   reopenTask,
+  isHabitDone,
+  toggleHabitToday,
 } from "../store";
 import type { DB, Task } from "../types";
 
@@ -38,6 +40,33 @@ export default function TodayScreen() {
           今日のやること {todayTasks.length} 件のうち {doneCount} 件できました。
         </p>
       )}
+
+      {db.habits.length > 0 && (
+        <>
+          <p className="section-title">毎日の習慣</p>
+          <div className="card">
+            {db.habits.map((h) => {
+              const done = isHabitDone(db, h.id);
+              return (
+                <div key={h.id} className="step">
+                  <button
+                    className={`step__check ${done ? "step__check--done" : ""}`}
+                    onClick={() => toggleHabitToday(h.id)}
+                    aria-label={done ? "完了を取り消す" : "完了にする"}
+                  >
+                    {done ? "✓" : ""}
+                  </button>
+                  <span className={`step__label ${done ? "step__label--done" : ""}`}>
+                    {h.title}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {db.habits.length > 0 && <p className="section-title">今日のタスク</p>}
 
       {todayTasks.length === 0 ? (
         <div className="empty">

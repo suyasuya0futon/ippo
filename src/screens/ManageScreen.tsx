@@ -7,6 +7,8 @@ import {
   addCategory,
   deleteCategory,
   addToToday,
+  addHabit,
+  deleteHabit,
 } from "../store";
 
 export default function ManageScreen() {
@@ -14,6 +16,8 @@ export default function ManageScreen() {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskCat, setTaskCat] = useState<string>("");
   const [catName, setCatName] = useState("");
+  const [habitTitle, setHabitTitle] = useState("");
+  const [habitCat, setHabitCat] = useState<string>("");
 
   const openTasks = db.tasks.filter((t) => t.status === "open");
   const todayTaskIds = new Set(db.today.map((t) => t.refId));
@@ -83,6 +87,63 @@ export default function ManageScreen() {
               </div>
             );
           })
+        )}
+      </div>
+
+      <p className="section-title">習慣（毎日）</p>
+      <div className="card">
+        <input
+          type="text"
+          placeholder="毎日やること（例：プロテイン飲む）"
+          value={habitTitle}
+          onChange={(e) => setHabitTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              addHabit(habitTitle, habitCat || null);
+              setHabitTitle("");
+            }
+          }}
+        />
+        <div className="row" style={{ marginTop: 10 }}>
+          <select value={habitCat} onChange={(e) => setHabitCat(e.target.value)} style={{ flex: 1 }}>
+            <option value="">未分類</option>
+            {db.categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn--primary"
+            onClick={() => {
+              addHabit(habitTitle, habitCat || null);
+              setHabitTitle("");
+            }}
+          >
+            追加
+          </button>
+        </div>
+        {db.habits.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            {db.habits.map((h) => {
+              const cat = catName_(h.categoryId);
+              return (
+                <div className="taskitem" key={h.id}>
+                  <span className="taskitem__title">
+                    {h.title}
+                    {cat && (
+                      <span className="chip" style={{ background: cat.color, marginLeft: 8 }}>
+                        {cat.name}
+                      </span>
+                    )}
+                  </span>
+                  <button className="btn--ghost btn" onClick={() => deleteHabit(h.id)}>
+                    削除
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

@@ -71,6 +71,23 @@ export interface DoneLog {
   memo?: string;
 }
 
+/** ストック情報のリスト種類 */
+export type StockList = "shopping" | "watch" | "places" | "memo";
+
+/**
+ * ストック情報。
+ * メモ・買い物リスト・視聴リスト・行きたい場所など、「やること」ではなく
+ * ためておく・見返す情報。done は「買った／見た／行った」のチェック。
+ */
+export interface StockItem {
+  id: ID;
+  list: StockList;
+  title: string;
+  done: boolean;
+  memo?: string;
+  createdAt: string;
+}
+
 /** ブラウザに丸ごと保存するデータの全体 */
 export interface DB {
   categories: Category[];
@@ -79,6 +96,7 @@ export interface DB {
   steps: Step[];
   today: TodayItem[];
   doneLogs: DoneLog[];
+  stock: StockItem[];
 }
 
 export const emptyDB: DB = {
@@ -88,4 +106,5 @@ export const emptyDB: DB = {
   steps: [],
   today: [],
   doneLogs: [],
+  stock: [],
 };

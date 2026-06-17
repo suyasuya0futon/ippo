@@ -3,12 +3,14 @@ import { useState } from "react";
 import TodayScreen from "./screens/TodayScreen";
 import ManageScreen from "./screens/ManageScreen";
 import CalendarScreen from "./screens/CalendarScreen";
+import StockScreen from "./screens/StockScreen";
 
-type Tab = "today" | "manage" | "calendar";
+type Tab = "today" | "manage" | "stock" | "calendar";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "today", label: "今日", icon: "🌱" },
   { key: "manage", label: "管理", icon: "📋" },
+  { key: "stock", label: "ストック", icon: "🗂️" },
   { key: "calendar", label: "カレンダー", icon: "📅" },
 ];
 
@@ -25,6 +27,7 @@ export default function App() {
       <main className="app__body">
         {tab === "today" && <TodayScreen />}
         {tab === "manage" && <ManageScreen />}
+        {tab === "stock" && <StockScreen />}
         {tab === "calendar" && <CalendarScreen />}
       </main>
 
