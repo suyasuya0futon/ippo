@@ -9,4 +9,7 @@ if (!url || !anonKey) {
   console.error("Supabase の環境変数が設定されていません（.env.local を確認）。");
 }
 
-export const supabase = createClient(url, anonKey);
+// IPPO のテーブルは専用スキーマ "ippo" に置く（同じプロジェクトの他アプリ＝public と衝突させない）。
+export const supabase = createClient(url, anonKey, {
+  db: { schema: "ippo" },
+});

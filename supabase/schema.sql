@@ -1,11 +1,15 @@
--- IPPO のテーブル定義（Supabase の SQL Editor に貼って実行してください）
--- ログインしたユーザー自身のデータだけを読み書きできるよう、RLS で保護します。
--- 何度実行しても安全なように書いてあります。
+-- IPPO のテーブル定義（Supabase の SQL Editor に貼って実行）
+-- 他アプリ(public スキーマ)と衝突しないよう、専用スキーマ "ippo" に作る。
+-- 実行後、ダッシュボードで Settings → API → Exposed schemas に "ippo" を追加すること。
+-- 何度実行しても安全。
 
 create extension if not exists "pgcrypto";
 
+create schema if not exists ippo;
+grant usage on schema ippo to anon, authenticated, service_role;
+
 -- アイテム（やること）
-create table if not exists public.items (
+create table if not exists ippo.items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   title text not null,
@@ -17,10 +21,10 @@ create table if not exists public.items (
 );
 
 -- 手順
-create table if not exists public.steps (
+create table if not exists ippo.steps (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  item_id uuid not null references public.items (id) on delete cascade,
+  item_id uuid not null references ippo.items (id) on delete cascade,
   title text not null,
   sort_order int not null default 0,
   done boolean not null default false,
@@ -28,16 +32,16 @@ create table if not exists public.steps (
 );
 
 -- 今日やること
-create table if not exists public.today_items (
+create table if not exists ippo.today_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  item_id uuid not null references public.items (id) on delete cascade,
+  item_id uuid not null references ippo.items (id) on delete cascade,
   date date not null,
   sort_order int not null default 0
 );
 
 -- できたことログ（アイテムを消しても残す。item への外部キーは張らない）
-create table if not exists public.done_logs (
+create table if not exists ippo.done_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   date date not null,
@@ -48,30 +52,33 @@ create table if not exists public.done_logs (
   memo text
 );
 
-create index if not exists idx_items_user on public.items (user_id);
-create index if not exists idx_steps_item on public.steps (item_id);
-create index if not exists idx_today_user_date on public.today_items (user_id, date);
-create index if not exists idx_logs_user_date on public.done_logs (user_id, date);
+create index if not exists idx_items_user on ippo.items (user_id);
+create index if not exists idx_steps_item on ippo.steps (item_id);
+create index if not exists idx_today_user_date on ippo.today_items (user_id, date);
+create index if not exists idx_logs_user_date on ippo.done_logs (user_id, date);
 
--- 行レベルセキュリティ（RLS）を有効化
-alter table public.items enable row level security;
-alter table public.steps enable row level security;
-alter table public.today_items enable row level security;
-alter table public.done_logs enable row level security;
+-- PostgREST 経由で読み書きできるよう権限を付与（行の制御は RLS が行う）
+grant all on all tables in schema ippo to anon, authenticated, service_role;
+alter default privileges in schema ippo grant all on tables to anon, authenticated, service_role;
 
--- 「自分の行だけ」読み書きできるルール（再実行できるよう一度消してから作る）
-drop policy if exists "own items" on public.items;
-create policy "own items" on public.items
+-- 行レベルセキュリティ（RLS）
+alter table ippo.items enable row level security;
+alter table ippo.steps enable row level security;
+alter table ippo.today_items enable row level security;
+alter table ippo.done_logs enable row level security;
+
+drop policy if exists "own items" on ippo.items;
+create policy "own items" on ippo.items
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-drop policy if exists "own steps" on public.steps;
-create policy "own steps" on public.steps
+drop policy if exists "own steps" on ippo.steps;
+create policy "own steps" on ippo.steps
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-drop policy if exists "own today" on public.today_items;
-create policy "own today" on public.today_items
+drop policy if exists "own today" on ippo.today_items;
+create policy "own today" on ippo.today_items
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-drop policy if exists "own logs" on public.done_logs;
-create policy "own logs" on public.done_logs
+drop policy if exists "own logs" on ippo.done_logs;
+create policy "own logs" on ippo.done_logs
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
