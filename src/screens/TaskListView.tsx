@@ -11,13 +11,14 @@ import {
   addStep,
   toggleStep,
   deleteStep,
+  deleteItem,
   completeItem,
   reopenItem,
   isDoneToday,
   toggleRecurringToday,
 } from "../store";
 import type { DB, Item } from "../types";
-import { TagChip } from "./ListScreen";
+import { TagChip } from "../components/TagChip";
 
 type Mode = "today" | "future";
 
@@ -53,6 +54,44 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   }, [picking]);
 
   const date = todayStr();
+
+  // ===== 今後やる =====
+  if (mode === "future") {
+    // 日付未定 or 明日以降の未完了（毎日タスクは出さない）
+    const futureItems = db.items
+      .filter(
+        (i) =>
+          !i.recurring &&
+          i.status === "open" &&
+          (i.scheduledDate == null || i.scheduledDate > date)
+      )
+      .sort((a, b) => {
+        // 日付ありを先（昇順）、日付なしは後ろ。同条件はタグ降順。
+        if (a.scheduledDate && b.scheduledDate) {
+          return a.scheduledDate.localeCompare(b.scheduledDate) || byTagDesc(a, b);
+        }
+        if (a.scheduledDate && !b.scheduledDate) return -1;
+        if (!a.scheduledDate && b.scheduledDate) return 1;
+        return byTagDesc(a, b);
+      });
+
+    return (
+      <div>
+        <p className="section-title">今後やる</p>
+        <div className="card">
+          {futureItems.length === 0 ? (
+            <div className="empty">
+              今後やるタスクはありません。{"\n"}「一覧」タブから追加できます。
+            </div>
+          ) : (
+            futureItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode="future" />)
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== 今日やる =====
   const habits = db.items.filter((i) => i.recurring).sort(byTagDesc);
 
   // 今日やる = 予定日が今日以前の未完了 ∪ 今日完了したもの（打ち消し線で残す）
@@ -202,6 +241,28 @@ function TaskRow({ item, db, mode }: { item: Item; db: DB; mode: Mode }) {
             🌱
           </button>
         )}
+        {/* 今後やる：背景なし🌱で「今日やるにする」＋削除 */}
+        {mode === "future" && (
+          <span className="icon-actions">
+            <button
+              className="icon-btn"
+              title="今日やるにする"
+              aria-label="今日やるにする"
+              onClick={() => addToToday(item.id)}
+            >
+              🌱
+            </button>
+            <button
+              className="icon-btn icon-btn--ghost"
+              style={{ fontSize: 20 }}
+              title="削除"
+              aria-label="削除"
+              onClick={() => deleteItem(item.id)}
+            >
+              ×
+            </button>
+          </span>
+        )}
       </div>
 
       {/* ステップ（あれば表示） */}
@@ -209,14 +270,19 @@ function TaskRow({ item, db, mode }: { item: Item; db: DB; mode: Mode }) {
         <div style={{ paddingLeft: 30 }}>
           {steps.map((s) => (
             <div key={s.id} className="step">
-              <button
-                className={`step__check ${s.done ? "step__check--done" : ""}`}
-                onClick={() => toggleStep(s.id)}
-                aria-label={s.done ? "完了を取り消す" : "完了にする"}
-              >
-                {s.done ? "✓" : ""}
-              </button>
-              <span className={`step__label ${s.done ? "step__label--done" : ""}`}>{s.title}</span>
+              {/* 今後やるでは完了させない（チェックは出さない。表示・追加・削除のみ） */}
+              {mode === "today" && (
+                <button
+                  className={`step__check ${s.done ? "step__check--done" : ""}`}
+                  onClick={() => toggleStep(s.id)}
+                  aria-label={s.done ? "完了を取り消す" : "完了にする"}
+                >
+                  {s.done ? "✓" : ""}
+                </button>
+              )}
+              <span className={`step__label ${mode === "today" && s.done ? "step__label--done" : ""}`}>
+                {s.title}
+              </span>
               <button
                 className="btn--ghost btn"
                 onClick={() => deleteStep(s.id)}

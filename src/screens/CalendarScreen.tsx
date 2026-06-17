@@ -2,7 +2,7 @@
 // メモはその日に1つ書ける。メモだけの一覧表示にも切り替えられる。
 import { useState } from "react";
 import { useStore, todayStr, logsForDate, doneCountByDate, getDayNote, setDayNote } from "../store";
-import { TagChip } from "./ListScreen";
+import { TagChip } from "../components/TagChip";
 import type { DoneLog } from "../types";
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];

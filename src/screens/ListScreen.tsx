@@ -16,23 +16,7 @@ import {
 import { supabase } from "../supabase";
 import type { Item } from "../types";
 import ItemInput from "../components/ItemInput";
-
-export function TagChip({ tag }: { tag: string | null }) {
-  if (!tag) return null;
-  return (
-    <span
-      className="chip"
-      style={{
-        background: "var(--surface-2)",
-        color: "var(--text-soft)",
-        border: "1px solid var(--line)",
-        marginRight: 6,
-      }}
-    >
-      {tag}
-    </span>
-  );
-}
+import { TagChip } from "../components/TagChip";
 
 // タグ降順（タグ無しは末尾）。同じタグ内は新しい順。
 const byTag = (a: Item, b: Item) => {
