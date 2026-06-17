@@ -1,73 +1,64 @@
-# React + TypeScript + Vite
+# IPPO
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AI サポート付きのタスク管理アプリです。
 
-Currently, two official plugins are available:
+## 開発
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+本番ビルド確認:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+lint:
+
+```bash
+npm run lint
+```
+
+## 環境変数
+
+`.env.example` をコピーして `.env.local` を作成します。
+
+```bash
+VITE_SUPABASE_URL=https://YOUR-PROJECT-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+```
+
+`VITE_SUPABASE_ANON_KEY` は Supabase の anon public key です。service role key はクライアントに置かないでください。
+
+## Supabase セットアップ
+
+IPPO のテーブルは `ippo` スキーマに作ります。
+
+新規 Supabase プロジェクトで初めて作る場合:
+
+1. Supabase SQL Editor で `supabase/schema.sql` を実行する
+2. Supabase Dashboard の Settings -> API -> Exposed schemas に `ippo` を追加する
+3. アプリを起動して GitHub ログインを確認する
+
+## 既存DBの migration
+
+`schema.sql` は `create table if not exists` を使っているため、既存テーブルへ後から列を追加する用途には使えません。
+既存DBを更新するときは、必要な migration SQL を Supabase SQL Editor で実行してください。
+
+現在の migration:
+
+- `supabase/migrate_tag.sql`
+  - 旧 `items.tags text[]` を `items.tag text` に移行します。
+- `supabase/migrate_tag_and_notes.sql`
+  - `done_logs.tag` を追加します。
+  - 旧 `done_logs.memo` を廃止します。
+  - `day_notes` テーブルを作成します。
+
+migration を実行した後、必要に応じてアプリを再読み込みしてください。
+
+## 初期データ
+
+新規ログインユーザーのデータが空の場合、`src/seed.ts` のダミー初期データが投入されます。
+既存ユーザーに対して再投入はされません。

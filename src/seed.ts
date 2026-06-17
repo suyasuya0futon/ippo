@@ -1,5 +1,5 @@
-// 新規ユーザーの初回ログイン時に入れる初期データ（Any.do から移してきた分）。
-// データが空のときだけ store から呼ばれる。
+// 新規ユーザーの初回ログイン時に入れるダミー初期データ。
+// Supabase 上のデータが空のときだけ store から呼ばれる。
 
 import { emptyDB, type DB, type Item } from "./types";
 
