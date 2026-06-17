@@ -3,7 +3,15 @@
 // 失敗してもアプリが止まらないよう、書き込みエラーはコンソールに出すだけにする。
 
 import { supabase } from "./supabase";
-import { emptyDB, type DB, type Item, type Step, type TodayItem, type DoneLog } from "./types";
+import {
+  emptyDB,
+  type DB,
+  type Item,
+  type Step,
+  type TodayItem,
+  type DoneLog,
+  type DayNote,
+} from "./types";
 
 // --- 行（DB）→ 型（アプリ）の変換 ---
 
@@ -31,9 +39,10 @@ type LogRow = {
   ref_type: "item" | "step";
   ref_id: string;
   title: string;
+  tag: string | null;
   done_at: string;
-  memo: string | null;
 };
+type DayNoteRow = { id: string; date: string; note: string };
 
 const toItem = (r: ItemRow): Item => ({
   id: r.id,
@@ -64,9 +73,10 @@ const toLog = (r: LogRow): DoneLog => ({
   refType: r.ref_type,
   refId: r.ref_id,
   title: r.title,
+  tag: r.tag ?? null,
   doneAt: r.done_at,
-  memo: r.memo ?? undefined,
 });
+const toDayNote = (r: DayNoteRow): DayNote => ({ id: r.id, date: r.date, note: r.note });
 
 // --- 型（アプリ）→ 行（DB）。user_id は DB 側の既定値 auth.uid() に任せる ---
 
@@ -99,9 +109,10 @@ const logRow = (l: DoneLog) => ({
   ref_type: l.refType,
   ref_id: l.refId,
   title: l.title,
+  tag: l.tag ?? null,
   done_at: l.doneAt,
-  memo: l.memo ?? null,
 });
+const dayNoteRow = (n: DayNote) => ({ id: n.id, date: n.date, note: n.note });
 
 function warn(where: string, error: unknown) {
   if (error) console.error(`Supabase 書き込み失敗 (${where})`, error);
@@ -111,20 +122,23 @@ function warn(where: string, error: unknown) {
 
 export async function fetchAll(): Promise<DB> {
   const db: DB = structuredClone(emptyDB);
-  const [items, steps, today, logs] = await Promise.all([
+  const [items, steps, today, logs, notes] = await Promise.all([
     supabase.from("items").select("*"),
     supabase.from("steps").select("*"),
     supabase.from("today_items").select("*"),
     supabase.from("done_logs").select("*"),
+    supabase.from("day_notes").select("*"),
   ]);
   if (items.error) warn("fetch items", items.error);
   if (steps.error) warn("fetch steps", steps.error);
   if (today.error) warn("fetch today", today.error);
   if (logs.error) warn("fetch logs", logs.error);
+  if (notes.error) warn("fetch day_notes", notes.error);
   db.items = (items.data ?? []).map((r) => toItem(r as ItemRow));
   db.steps = (steps.data ?? []).map((r) => toStep(r as StepRow));
   db.today = (today.data ?? []).map((r) => toToday(r as TodayRow));
   db.doneLogs = (logs.data ?? []).map((r) => toLog(r as LogRow));
+  db.dayNotes = (notes.data ?? []).map((r) => toDayNote(r as DayNoteRow));
   return db;
 }
 
@@ -141,6 +155,9 @@ export async function bulkInsert(db: DB) {
   }
   if (db.doneLogs.length) {
     warn("seed logs", (await supabase.from("done_logs").insert(db.doneLogs.map(logRow))).error);
+  }
+  if (db.dayNotes.length) {
+    warn("seed day_notes", (await supabase.from("day_notes").insert(db.dayNotes.map(dayNoteRow))).error);
   }
 }
 
@@ -196,6 +213,12 @@ export async function deleteLogsByRef(refType: "item" | "step", refId: string, d
   if (date) q = q.eq("date", date);
   warn("deleteLogsByRef", (await q).error);
 }
-export async function updateLogMemo(id: string, memo: string | null) {
-  warn("updateLogMemo", (await supabase.from("done_logs").update({ memo }).eq("id", id)).error);
+export async function insertDayNote(n: DayNote) {
+  warn("insertDayNote", (await supabase.from("day_notes").insert(dayNoteRow(n))).error);
+}
+export async function updateDayNote(n: DayNote) {
+  warn("updateDayNote", (await supabase.from("day_notes").update({ note: n.note }).eq("id", n.id)).error);
+}
+export async function deleteDayNote(id: string) {
+  warn("deleteDayNote", (await supabase.from("day_notes").delete().eq("id", id)).error);
 }

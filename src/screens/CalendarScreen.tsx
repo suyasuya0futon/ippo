@@ -1,6 +1,9 @@
 // カレンダー画面：月表示で「できた数」が見える。日付を押すとその日のできたこと一覧。
+// メモはその日に1つだけ書ける。
 import { useState } from "react";
-import { useStore, todayStr, logsForDate, doneCountByDate, setLogMemo } from "../store";
+import { useStore, todayStr, logsForDate, doneCountByDate, getDayNote, setDayNote } from "../store";
+import { TagChip } from "./ListScreen";
+import type { DoneLog } from "../types";
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -13,8 +16,6 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-
-const TYPE_LABEL: Record<string, string> = { item: "", step: "一歩" };
 
 export default function CalendarScreen() {
   const db = useStore();
@@ -90,13 +91,15 @@ export default function CalendarScreen() {
 
       <p className="section-title">{formatJpDate(selected)}</p>
       <div className="card">
+        <DayMemo key={selected} date={selected} />
+
         {logs.length === 0 ? (
-          <div className="empty" style={{ padding: 16 }}>
-            この日の記録はまだありません。
+          <div className="empty" style={{ padding: "16px 8px 4px" }}>
+            この日の「できたこと」はまだありません。
           </div>
         ) : (
           <>
-            <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+            <p className="muted" style={{ fontSize: 13, margin: "4px 0 0" }}>
               できたこと {logs.length} 件
             </p>
             {logs.map((log) => (
@@ -109,62 +112,39 @@ export default function CalendarScreen() {
   );
 }
 
-function LogRow({
-  log,
-}: {
-  log: { id: string; title: string; doneAt: string; refType: string; memo?: string };
-}) {
-  const [editing, setEditing] = useState(false);
-  const [memo, setMemo] = useState(log.memo ?? "");
+function DayMemo({ date }: { date: string }) {
+  const db = useStore();
+  const [text, setText] = useState(() => getDayNote(db, date));
 
   return (
-    <div className="taskitem" style={{ alignItems: "flex-start" }}>
-      <span style={{ fontSize: 12, color: "var(--text-soft)", width: 42, paddingTop: 2 }}>
+    <div style={{ marginBottom: 8 }}>
+      <textarea
+        rows={2}
+        placeholder="今日のメモ（1日に1つ）"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => setDayNote(date, text)}
+        style={{ resize: "vertical" }}
+      />
+    </div>
+  );
+}
+
+function LogRow({ log }: { log: DoneLog }) {
+  return (
+    <div className="taskitem">
+      <span style={{ fontSize: 12, color: "var(--text-soft)", width: 42 }}>
         {formatTime(log.doneAt)}
       </span>
-      <div style={{ flex: 1 }}>
-        <div>
-          {log.title}
+      <span style={{ flex: 1 }}>
+        <TagChip tag={log.tag} />
+        {log.title}
+        {log.refType === "step" && (
           <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>
-            {TYPE_LABEL[log.refType]}
+            一歩
           </span>
-        </div>
-        {editing ? (
-          <div className="row" style={{ marginTop: 6 }}>
-            <input
-              type="text"
-              placeholder="メモ"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-            />
-            <button
-              className="btn btn--small btn--primary"
-              onClick={() => {
-                setLogMemo(log.id, memo);
-                setEditing(false);
-              }}
-            >
-              保存
-            </button>
-          </div>
-        ) : log.memo ? (
-          <div
-            className="muted"
-            style={{ fontSize: 13, marginTop: 2, cursor: "pointer" }}
-            onClick={() => setEditing(true)}
-          >
-            📝 {log.memo}
-          </div>
-        ) : (
-          <button
-            className="btn--ghost btn"
-            style={{ padding: "2px 0", fontSize: 12 }}
-            onClick={() => setEditing(true)}
-          >
-            ＋ メモを足す
-          </button>
         )}
-      </div>
+      </span>
     </div>
   );
 }

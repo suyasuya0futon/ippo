@@ -48,8 +48,17 @@ create table if not exists ippo.done_logs (
   ref_type text not null,
   ref_id uuid not null,
   title text not null,
-  done_at timestamptz not null default now(),
-  memo text
+  tag text,
+  done_at timestamptz not null default now()
+);
+
+-- 1日のメモ（ユーザーごとに1日1件）
+create table if not exists ippo.day_notes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  date date not null,
+  note text not null default '',
+  unique (user_id, date)
 );
 
 create index if not exists idx_items_user on ippo.items (user_id);
@@ -66,6 +75,7 @@ alter table ippo.items enable row level security;
 alter table ippo.steps enable row level security;
 alter table ippo.today_items enable row level security;
 alter table ippo.done_logs enable row level security;
+alter table ippo.day_notes enable row level security;
 
 drop policy if exists "own items" on ippo.items;
 create policy "own items" on ippo.items
@@ -81,4 +91,8 @@ create policy "own today" on ippo.today_items
 
 drop policy if exists "own logs" on ippo.done_logs;
 create policy "own logs" on ippo.done_logs
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own day_notes" on ippo.day_notes;
+create policy "own day_notes" on ippo.day_notes
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

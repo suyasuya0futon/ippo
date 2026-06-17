@@ -1,4 +1,5 @@
 // 一覧画面：すべてのアイテムを追加・編集・削除する場所。
+// 一度きりのタスクを上に（タグ降順でまとまる）、毎日の習慣は下にまとめる。
 // タグで絞り込める（タグの管理画面は持たない。書いて付けるだけ）。
 import { useState } from "react";
 import {
@@ -12,39 +13,43 @@ import {
   removeFromToday,
   itemToInput,
 } from "../store";
+import { supabase } from "../supabase";
 import type { Item } from "../types";
 import ItemInput from "../components/ItemInput";
-
-const PALETTE = ["#7da9c9", "#9ec7a4", "#c9a9c4", "#d6b48a", "#a4b0c9", "#c99a9a", "#8fbcb0"];
-
-export function tagColor(tag: string): string {
-  let h = 0;
-  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-}
 
 export function TagChip({ tag }: { tag: string | null }) {
   if (!tag) return null;
   return (
-    <span className="chip" style={{ background: tagColor(tag), marginLeft: 6 }}>
+    <span
+      className="chip"
+      style={{
+        background: "var(--surface-2)",
+        color: "var(--text-soft)",
+        border: "1px solid var(--line)",
+        marginRight: 6,
+      }}
+    >
       {tag}
     </span>
   );
 }
+
+// タグ降順（タグ無しは末尾）。同じタグ内は新しい順。
+const byTag = (a: Item, b: Item) => {
+  const t = (b.tag ?? "").localeCompare(a.tag ?? "", "ja");
+  return t !== 0 ? t : b.createdAt.localeCompare(a.createdAt);
+};
 
 export default function ListScreen() {
   const db = useStore();
   const [filter, setFilter] = useState<string | null>(null);
 
   const tags = allTags(db);
-  const todayIds = new Set(
-    db.today.filter((t) => t.date === todayStr()).map((t) => t.itemId)
-  );
+  const todayIds = new Set(db.today.filter((t) => t.date === todayStr()).map((t) => t.itemId));
 
-  const items = db.items
-    .filter((it) => (filter ? it.tag === filter : true))
-    .slice()
-    .reverse(); // 新しく足したものを上に
+  const filtered = db.items.filter((it) => (filter ? it.tag === filter : true));
+  const tasks = filtered.filter((it) => !it.recurring).sort(byTag);
+  const habits = filtered.filter((it) => it.recurring).sort(byTag);
 
   return (
     <div>
@@ -76,14 +81,35 @@ export default function ListScreen() {
       )}
 
       <div className="card">
-        {items.length === 0 ? (
+        {tasks.length === 0 ? (
           <div className="empty">
-            {filter ? `#${filter} のアイテムはありません。` : "まだ何もありません。\nひとつ、小さなことから書いてみましょう。"}
+            {filter
+              ? `#${filter} のタスクはありません。`
+              : "まだ何もありません。\nひとつ、小さなことから書いてみましょう。"}
           </div>
         ) : (
-          items.map((it) => <ItemRow key={it.id} item={it} inToday={todayIds.has(it.id)} />)
+          tasks.map((it) => <ItemRow key={it.id} item={it} inToday={todayIds.has(it.id)} />)
         )}
       </div>
+
+      {habits.length > 0 && (
+        <>
+          <p className="section-title">毎日の習慣</p>
+          <div className="card">
+            {habits.map((it) => (
+              <ItemRow key={it.id} item={it} inToday={false} />
+            ))}
+          </div>
+        </>
+      )}
+
+      <button
+        className="btn--ghost btn"
+        style={{ width: "100%", marginTop: 8 }}
+        onClick={() => supabase.auth.signOut()}
+      >
+        ログアウト
+      </button>
     </div>
   );
 }
@@ -113,30 +139,44 @@ function ItemRow({ item, inToday }: { item: Item; inToday: boolean }) {
 
   return (
     <div className="taskitem">
-      <span
-        className={`taskitem__title ${item.status === "done" ? "taskitem__title--done" : ""}`}
-      >
-        {item.recurring && (
-          <span className="chip" style={{ background: "var(--accent)", marginRight: 6 }}>
-            毎日
-          </span>
-        )}
-        {item.title}
+      <span className="taskitem__title">
         <TagChip tag={item.tag} />
+        {item.title}
       </span>
       {!item.recurring && (
         <button
-          className="btn btn--small"
+          className="btn"
+          style={{
+            borderRadius: 999,
+            padding: "4px 9px",
+            fontSize: 16,
+            background: inToday ? "var(--accent)" : "var(--surface-2)",
+            borderColor: inToday ? "var(--accent)" : "var(--line)",
+          }}
+          title={inToday ? "今日から外す" : "今日に追加"}
+          aria-label={inToday ? "今日から外す" : "今日に追加"}
           onClick={() => (inToday ? removeFromToday(item.id) : addToToday(item.id))}
         >
-          {inToday ? "今日から外す" : "今日に追加"}
+          🌱
         </button>
       )}
-      <button className="btn--ghost btn" onClick={() => setEditing(true)}>
-        編集
+      <button
+        className="btn--ghost btn"
+        style={{ padding: "4px 6px", fontSize: 15 }}
+        title="編集"
+        aria-label="編集"
+        onClick={() => setEditing(true)}
+      >
+        ✏️
       </button>
-      <button className="btn--ghost btn" onClick={() => deleteItem(item.id)}>
-        削除
+      <button
+        className="btn--ghost btn"
+        style={{ padding: "2px 8px", fontSize: 20, lineHeight: 1 }}
+        title="削除"
+        aria-label="削除"
+        onClick={() => deleteItem(item.id)}
+      >
+        ×
       </button>
     </div>
   );

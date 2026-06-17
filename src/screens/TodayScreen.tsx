@@ -1,4 +1,5 @@
-// 今日画面：毎日の習慣が自動で並び、今日やることを選んで手順をチェックしていく中心の画面。
+// 今日画面：毎日の習慣も今日のタスクも「チェック付きリスト」で統一。
+// 頭の○を押すと完了。手順は「＋手順」を押したときだけ入力欄が出る。
 import { useState } from "react";
 import {
   useStore,
@@ -64,8 +65,8 @@ export default function TodayScreen() {
                     {done ? "✓" : ""}
                   </button>
                   <span className={`step__label ${done ? "step__label--done" : ""}`}>
-                    {h.title}
                     <TagChip tag={h.tag} />
+                    {h.title}
                   </span>
                 </div>
               );
@@ -75,15 +76,17 @@ export default function TodayScreen() {
       )}
 
       <p className="section-title">今日のタスク</p>
-      {todayItems.length === 0 ? (
-        <div className="empty">
-          今日やることは、まだありません。{"\n"}
-          下のボタンから、ひとつだけ選んでみましょう。{"\n"}
-          ひとつで十分です。
-        </div>
-      ) : (
-        todayItems.map((item) => <TodayCard key={item.id} item={item} db={db} />)
-      )}
+      <div className="card">
+        {todayItems.length === 0 ? (
+          <div className="empty">
+            今日やることは、まだありません。{"\n"}
+            下のボタンから、ひとつだけ選んでみましょう。{"\n"}
+            ひとつで十分です。
+          </div>
+        ) : (
+          todayItems.map((item) => <TodayTaskRow key={item.id} item={item} db={db} />)
+        )}
+      </div>
 
       <button className="btn" style={{ width: "100%" }} onClick={() => setPicking((v) => !v)}>
         {picking ? "閉じる" : "＋ 今日やることを選ぶ"}
@@ -99,8 +102,8 @@ export default function TodayScreen() {
             candidates.map((it) => (
               <div className="taskitem" key={it.id}>
                 <span className="taskitem__title">
-                  {it.title}
                   <TagChip tag={it.tag} />
+                  {it.title}
                 </span>
                 <button className="btn btn--small btn--primary" onClick={() => addToToday(it.id)}>
                   追加
@@ -114,13 +117,11 @@ export default function TodayScreen() {
   );
 }
 
-function TodayCard({ item, db }: { item: Item; db: DB }) {
+function TodayTaskRow({ item, db }: { item: Item; db: DB }) {
+  const [adding, setAdding] = useState(false);
   const [stepText, setStepText] = useState("");
 
-  const steps = db.steps
-    .filter((s) => s.itemId === item.id)
-    .sort((a, b) => a.order - b.order);
-
+  const steps = db.steps.filter((s) => s.itemId === item.id).sort((a, b) => a.order - b.order);
   const nextStepId = steps.find((s) => !s.done)?.id;
   const isDone = item.status === "done";
 
@@ -130,26 +131,39 @@ function TodayCard({ item, db }: { item: Item; db: DB }) {
   }
 
   return (
-    <div className="card">
-      <div className="row" style={{ marginBottom: 4 }}>
-        <strong
-          style={{
-            flex: 1,
-            fontSize: 17,
-            color: isDone ? "var(--text-soft)" : "var(--text)",
-            textDecoration: isDone ? "line-through" : "none",
-          }}
+    <div className="trow">
+      {/* タスク本体の行 */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 4px" }}>
+        <button
+          className={`step__check ${isDone ? "step__check--done" : ""}`}
+          onClick={() => (isDone ? reopenItem(item.id) : completeItem(item.id))}
+          aria-label={isDone ? "完了を取り消す" : "完了にする"}
         >
-          {item.title}
+          {isDone ? "✓" : ""}
+        </button>
+        <span className={`step__label ${isDone ? "step__label--done" : ""}`} style={{ flex: 1 }}>
           <TagChip tag={item.tag} />
-        </strong>
-        <button className="btn--ghost btn" onClick={() => removeFromToday(item.id)}>
+          {item.title}
+        </span>
+        <button
+          className="btn--ghost btn"
+          style={{ padding: "2px 6px", fontSize: 12 }}
+          onClick={() => setAdding((v) => !v)}
+        >
+          ＋手順
+        </button>
+        <button
+          className="btn--ghost btn"
+          style={{ padding: "2px 6px", fontSize: 12 }}
+          onClick={() => removeFromToday(item.id)}
+        >
           今日から外す
         </button>
       </div>
 
+      {/* 手順（あれば表示） */}
       {steps.length > 0 && (
-        <div style={{ margin: "6px 0 10px" }}>
+        <div style={{ paddingLeft: 30 }}>
           {steps.map((s) => {
             const isNext = s.id === nextStepId;
             return (
@@ -178,31 +192,21 @@ function TodayCard({ item, db }: { item: Item; db: DB }) {
         </div>
       )}
 
-      <div className="row" style={{ marginBottom: 12 }}>
-        <input
-          type="text"
-          placeholder="手順を足す（例：上着を着る）"
-          value={stepText}
-          onChange={(e) => setStepText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submitStep()}
-        />
-        <button className="btn btn--small" onClick={submitStep}>
-          足す
-        </button>
-      </div>
-
-      {isDone ? (
-        <button className="btn" style={{ width: "100%" }} onClick={() => reopenItem(item.id)}>
-          「できた」を取り消す
-        </button>
-      ) : (
-        <button
-          className="btn btn--done"
-          style={{ width: "100%" }}
-          onClick={() => completeItem(item.id)}
-        >
-          できた
-        </button>
+      {/* 「＋手順」を押したときだけ入力欄が出る */}
+      {adding && (
+        <div className="row" style={{ paddingLeft: 30, marginBottom: 10 }}>
+          <input
+            type="text"
+            placeholder="手順を足す（例：上着を着る）"
+            value={stepText}
+            autoFocus
+            onChange={(e) => setStepText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submitStep()}
+          />
+          <button className="btn btn--small" onClick={submitStep}>
+            足す
+          </button>
+        </div>
       )}
     </div>
   );

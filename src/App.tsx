@@ -69,19 +69,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="app__header">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h1 className="app__title">IPPO</h1>
-            <p className="app__tagline">動けない時に、少しずつ一歩を刻む。</p>
-          </div>
-          <button className="btn--ghost btn" onClick={() => supabase.auth.signOut()}>
-            ログアウト
-          </button>
-        </div>
-      </header>
-
-      <main className="app__body">
+      <main className="app__body" style={{ paddingTop: 16 }}>
         {tab === "today" && <TodayScreen />}
         {tab === "list" && <ListScreen />}
         {tab === "calendar" && <CalendarScreen />}

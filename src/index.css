@@ -337,6 +337,15 @@ select {
   font-weight: 700;
 }
 
+/* 今日のタスク1件分（リストの行）。区切り線で並べる */
+.trow {
+  border-bottom: 1px solid var(--line);
+}
+
+.trow:last-child {
+  border-bottom: none;
+}
+
 .taskitem {
   display: flex;
   align-items: center;

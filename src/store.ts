@@ -5,7 +5,15 @@
 // 裏で Supabase にも書き込む。読み込みは hydrate() でまとめて取得する。
 
 import { useSyncExternalStore } from "react";
-import { emptyDB, type DB, type Item, type Step, type TodayItem, type DoneLog } from "./types";
+import {
+  emptyDB,
+  type DB,
+  type Item,
+  type Step,
+  type TodayItem,
+  type DoneLog,
+  type DayNote,
+} from "./types";
 import { seedDB } from "./seed";
 import * as remote from "./db";
 
@@ -165,6 +173,7 @@ export function completeItem(itemId: string) {
     refType: "item",
     refId: itemId,
     title: current.title,
+    tag: current.tag,
     doneAt,
   };
   optimistic((d) => {
@@ -219,6 +228,7 @@ export function toggleRecurringToday(itemId: string) {
       refType: "item",
       refId: itemId,
       title: it.title,
+      tag: it.tag,
       doneAt: now(),
     };
     optimistic((d) => d.doneLogs.push(log));
@@ -281,12 +291,14 @@ export function toggleStep(stepId: string) {
     void remote.deleteLogsByRef("step", stepId);
   } else {
     const doneAt = now();
+    const parentTag = db.items.find((i) => i.id === s.itemId)?.tag ?? null;
     const log: DoneLog = {
       id: uid(),
       date: todayStr(),
       refType: "step",
       refId: stepId,
       title: s.title,
+      tag: parentTag,
       doneAt,
     };
     optimistic((d) => {
@@ -303,18 +315,36 @@ export function toggleStep(stepId: string) {
   }
 }
 
-// --- できたことログ ---
+// --- 1日のメモ（日付ごとに1つ） ---
 
-export function setLogMemo(logId: string, memo: string) {
-  const trimmed = memo.trim();
-  optimistic((d) => {
-    const l = d.doneLogs.find((x) => x.id === logId);
-    if (!l) return;
-    if (trimmed) l.memo = trimmed;
-    else delete l.memo;
-  });
-  void remote.updateLogMemo(logId, trimmed || null);
+export function getDayNote(d: DB, date: string): string {
+  return d.dayNotes.find((n) => n.date === date)?.note ?? "";
 }
+
+export function setDayNote(date: string, note: string) {
+  const trimmed = note.trim();
+  const existing = db.dayNotes.find((n) => n.date === date);
+  if (existing) {
+    if (trimmed) {
+      optimistic((d) => {
+        const n = d.dayNotes.find((x) => x.id === existing.id);
+        if (n) n.note = trimmed;
+      });
+      void remote.updateDayNote({ ...existing, note: trimmed });
+    } else {
+      optimistic((d) => {
+        d.dayNotes = d.dayNotes.filter((x) => x.id !== existing.id);
+      });
+      void remote.deleteDayNote(existing.id);
+    }
+  } else if (trimmed) {
+    const entry: DayNote = { id: uid(), date, note: trimmed };
+    optimistic((d) => d.dayNotes.push(entry));
+    void remote.insertDayNote(entry);
+  }
+}
+
+// --- できたことログ ---
 
 /** その日にできたことを取り出す（新しい順） */
 export function logsForDate(d: DB, date: string): DoneLog[] {

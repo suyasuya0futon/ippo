@@ -45,7 +45,7 @@ export interface TodayItem {
 
 /**
  * できたことの記録。
- * title をコピーして持つので、元のアイテムを消してもカレンダーには残り続ける。
+ * title と tag をコピーして持つので、元のアイテムを消してもカレンダーには残り続ける。
  */
 export interface DoneLog {
   id: ID;
@@ -53,8 +53,15 @@ export interface DoneLog {
   refType: RefType;
   refId: ID;
   title: string;
+  tag: string | null;
   doneAt: string; // ISO 文字列
-  memo?: string;
+}
+
+/** 1日に1つのメモ（その日の一言） */
+export interface DayNote {
+  id: ID;
+  date: string; // "YYYY-MM-DD"（ユーザーごとに1日1件）
+  note: string;
 }
 
 /** ブラウザに丸ごと保存するデータの全体 */
@@ -63,6 +70,7 @@ export interface DB {
   steps: Step[];
   today: TodayItem[];
   doneLogs: DoneLog[];
+  dayNotes: DayNote[];
 }
 
 export const emptyDB: DB = {
@@ -70,4 +78,5 @@ export const emptyDB: DB = {
   steps: [],
   today: [],
   doneLogs: [],
+  dayNotes: [],
 };
