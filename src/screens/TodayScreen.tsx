@@ -16,18 +16,21 @@ import {
 import type { DB, Item } from "../types";
 import { TagChip } from "./ListScreen";
 
+// タグ降順で並べる（タグ無しは末尾）
+const byTagDesc = (a: Item, b: Item) => (b.tag ?? "").localeCompare(a.tag ?? "", "ja");
+
 export default function TodayScreen() {
   const db = useStore();
   const [picking, setPicking] = useState(false);
 
   const date = todayStr();
-  const habits = db.items.filter((i) => i.recurring);
+  const habits = db.items.filter((i) => i.recurring).sort(byTagDesc);
 
   const todayItems = db.today
     .filter((t) => t.date === date)
-    .sort((a, b) => a.order - b.order)
     .map((t) => db.items.find((i) => i.id === t.itemId))
-    .filter((i): i is Item => Boolean(i) && !i!.recurring);
+    .filter((i): i is Item => Boolean(i) && !i!.recurring)
+    .sort(byTagDesc);
 
   const todayIds = new Set(todayItems.map((i) => i.id));
   const candidates = db.items.filter(
@@ -145,11 +148,7 @@ function TodayCard({ item, db }: { item: Item; db: DB }) {
         </button>
       </div>
 
-      {steps.length === 0 ? (
-        <p className="muted" style={{ fontSize: 13, margin: "4px 0 10px" }}>
-          手順をひとつずつ足していけます。（次回、AI が自動で分けてくれるようにします）
-        </p>
-      ) : (
+      {steps.length > 0 && (
         <div style={{ margin: "6px 0 10px" }}>
           {steps.map((s) => {
             const isNext = s.id === nextStepId;
