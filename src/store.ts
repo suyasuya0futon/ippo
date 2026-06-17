@@ -88,56 +88,56 @@ export function todayStr(d: Date = new Date()): string {
 }
 
 /**
- * 入力文字列から #タグ を取り出し、タイトルとタグに分ける。
+ * 入力文字列から #タグ を取り出し、タイトルとタグ（1個）に分ける。
  * タグは「# または ＃ のあと、次の空白までの文字」。日本語でも安全。
- * 例: "GUコート袖縫う #裁縫" → { title: "GUコート袖縫う", tags: ["裁縫"] }
+ * 複数書かれていても最初の1個だけを採用する。
+ * 例: "GUコート袖縫う #裁縫" → { title: "GUコート袖縫う", tag: "裁縫" }
  */
-export function parseTags(input: string): { title: string; tags: string[] } {
+export function parseTag(input: string): { title: string; tag: string | null } {
   const re = /[#＃]([^\s#＃　]+)/g;
-  const tags: string[] = [];
+  let tag: string | null = null;
   let m: RegExpExecArray | null;
   while ((m = re.exec(input)) !== null) {
-    if (m[1] && !tags.includes(m[1])) tags.push(m[1]);
+    if (tag === null && m[1]) tag = m[1]; // 最初の1個を採用
   }
   const title = input
     .replace(re, "")
     .replace(/[\s　]+/g, " ")
     .trim();
-  return { title, tags };
+  return { title, tag };
 }
 
-/** アイテムを編集用の入力文字列（タイトル #タグ…）に戻す */
+/** アイテムを編集用の入力文字列（タイトル #タグ）に戻す */
 export function itemToInput(item: Item): string {
-  const tagStr = item.tags.map((t) => `#${t}`).join(" ");
-  return tagStr ? `${item.title} ${tagStr}` : item.title;
+  return item.tag ? `${item.title} #${item.tag}` : item.title;
 }
 
 /** 今あるタグの一覧（重複なし）。絞り込みや候補に使う。 */
 export function allTags(d: DB): string[] {
   const set = new Set<string>();
-  for (const it of d.items) for (const t of it.tags) set.add(t);
+  for (const it of d.items) if (it.tag) set.add(it.tag);
   return [...set].sort((a, b) => a.localeCompare(b, "ja"));
 }
 
 // --- アイテム ---
 
 export function addItem(input: string, recurring: boolean): string | null {
-  const { title, tags } = parseTags(input);
+  const { title, tag } = parseTag(input);
   if (!title) return null;
-  const item: Item = { id: uid(), title, tags, recurring, status: "open", createdAt: now() };
+  const item: Item = { id: uid(), title, tag, recurring, status: "open", createdAt: now() };
   optimistic((d) => d.items.push(item));
   void remote.insertItem(item);
   return item.id;
 }
 
 export function editItem(itemId: string, input: string, recurring: boolean) {
-  const { title, tags } = parseTags(input);
+  const { title, tag } = parseTag(input);
   if (!title) return;
   optimistic((d) => {
     const it = d.items.find((x) => x.id === itemId);
     if (!it) return;
     it.title = title;
-    it.tags = tags;
+    it.tag = tag;
     it.recurring = recurring;
   });
   const updated = db.items.find((x) => x.id === itemId);

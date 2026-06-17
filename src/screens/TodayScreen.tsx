@@ -14,7 +14,7 @@ import {
   toggleRecurringToday,
 } from "../store";
 import type { DB, Item } from "../types";
-import { TagChips } from "./ListScreen";
+import { TagChip } from "./ListScreen";
 
 export default function TodayScreen() {
   const db = useStore();
@@ -62,7 +62,7 @@ export default function TodayScreen() {
                   </button>
                   <span className={`step__label ${done ? "step__label--done" : ""}`}>
                     {h.title}
-                    <TagChips tags={h.tags} />
+                    <TagChip tag={h.tag} />
                   </span>
                 </div>
               );
@@ -97,7 +97,7 @@ export default function TodayScreen() {
               <div className="taskitem" key={it.id}>
                 <span className="taskitem__title">
                   {it.title}
-                  <TagChips tags={it.tags} />
+                  <TagChip tag={it.tag} />
                 </span>
                 <button className="btn btn--small btn--primary" onClick={() => addToToday(it.id)}>
                   追加
@@ -138,7 +138,7 @@ function TodayCard({ item, db }: { item: Item; db: DB }) {
           }}
         >
           {item.title}
-          <TagChips tags={item.tags} />
+          <TagChip tag={item.tag} />
         </strong>
         <button className="btn--ghost btn" onClick={() => removeFromToday(item.id)}>
           今日から外す

@@ -10,7 +10,7 @@ import { emptyDB, type DB, type Item, type Step, type TodayItem, type DoneLog } 
 type ItemRow = {
   id: string;
   title: string;
-  tags: string[];
+  tag: string | null;
   recurring: boolean;
   status: "open" | "done";
   created_at: string;
@@ -38,7 +38,7 @@ type LogRow = {
 const toItem = (r: ItemRow): Item => ({
   id: r.id,
   title: r.title,
-  tags: r.tags ?? [],
+  tag: r.tag ?? null,
   recurring: r.recurring,
   status: r.status,
   createdAt: r.created_at,
@@ -73,7 +73,7 @@ const toLog = (r: LogRow): DoneLog => ({
 const itemRow = (i: Item) => ({
   id: i.id,
   title: i.title,
-  tags: i.tags,
+  tag: i.tag ?? null,
   recurring: i.recurring,
   status: i.status,
   created_at: i.createdAt,

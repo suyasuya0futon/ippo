@@ -23,15 +23,11 @@ export function tagColor(tag: string): string {
   return PALETTE[h % PALETTE.length];
 }
 
-export function TagChips({ tags }: { tags: string[] }) {
-  if (tags.length === 0) return null;
+export function TagChip({ tag }: { tag: string | null }) {
+  if (!tag) return null;
   return (
-    <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 6, marginLeft: 6 }}>
-      {tags.map((t) => (
-        <span key={t} className="chip" style={{ background: tagColor(t) }}>
-          {t}
-        </span>
-      ))}
+    <span className="chip" style={{ background: tagColor(tag), marginLeft: 6 }}>
+      {tag}
     </span>
   );
 }
@@ -46,7 +42,7 @@ export default function ListScreen() {
   );
 
   const items = db.items
-    .filter((it) => (filter ? it.tags.includes(filter) : true))
+    .filter((it) => (filter ? it.tag === filter : true))
     .slice()
     .reverse(); // 新しく足したものを上に
 
@@ -126,7 +122,7 @@ function ItemRow({ item, inToday }: { item: Item; inToday: boolean }) {
           </span>
         )}
         {item.title}
-        <TagChips tags={item.tags} />
+        <TagChip tag={item.tag} />
       </span>
       {!item.recurring && (
         <button

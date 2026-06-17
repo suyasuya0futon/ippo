@@ -15,7 +15,7 @@ export type RefType = "item" | "step";
 export interface Item {
   id: ID;
   title: string;
-  tags: string[];
+  tag: string | null; // タグは1個だけ。無ければ null。
   recurring: boolean;
   status: "open" | "done"; // recurring の場合は使わない（日ごとに doneLogs で管理）
   createdAt: string;

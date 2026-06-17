@@ -13,7 +13,7 @@ create table if not exists ippo.items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   title text not null,
-  tags text[] not null default '{}',
+  tag text,
   recurring boolean not null default false,
   status text not null default 'open',
   created_at timestamptz not null default now(),
