@@ -1,5 +1,5 @@
 // カレンダー画面：月表示で「できた数」が見える。日付を押すとその日のできたこと一覧。
-// メモはその日に1つ書ける。メモだけの一覧表示にも切り替えられる。
+// 「ひとこと」はその日に1つ書ける。ひとことだけの一覧表示にも切り替えられる。
 import { useState } from "react";
 import {
   useStore,
@@ -48,7 +48,7 @@ export default function CalendarScreen() {
           className="section-title"
           style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}
         >
-          <span>メモ一覧</span>
+          <span>ひとこと一覧</span>
           <button
             className="btn--ghost btn"
             style={{ fontSize: 12, padding: 0, fontWeight: 400 }}
@@ -60,7 +60,7 @@ export default function CalendarScreen() {
         <div className="card">
           {notes.length === 0 ? (
             <div className="empty" style={{ padding: 16 }}>
-              メモはまだありません。
+              ひとことはまだありません。
             </div>
           ) : (
             notes.map((n) => (
@@ -161,7 +161,7 @@ export default function CalendarScreen() {
           style={{ fontSize: 12, padding: 0, fontWeight: 400 }}
           onClick={() => setView("notes")}
         >
-          メモを一覧で見る
+          ひとことを一覧で見る
         </button>
       </p>
       <div className="card">
@@ -215,7 +215,7 @@ function DayMemo({ date }: { date: string }) {
     <div style={{ marginBottom: 8 }}>
       <textarea
         rows={2}
-        placeholder="今日のメモ"
+        placeholder="ひとこと"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => setDayNote(date, text)}

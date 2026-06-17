@@ -1,8 +1,9 @@
 // Supabase との読み書きをまとめた場所。
 // TS の型（camelCase）と DB の列（snake_case）の変換もここで吸収する。
-// 失敗してもアプリが止まらないよう、書き込みエラーはコンソールに出すだけにする。
+// 失敗してもアプリが止まらないよう、書き込みエラーはトーストで知らせるだけにする。
 
 import { supabase } from "./supabase";
+import { showToast } from "./toast";
 import {
   emptyDB,
   type DB,
@@ -103,8 +104,16 @@ const logRow = (l: DoneLog) => ({
 });
 const dayNoteRow = (n: DayNote) => ({ id: n.id, date: n.date, note: n.note });
 
+// 書き込み失敗：コンソールに出し、画面にもトーストで知らせる。
 function warn(where: string, error: unknown) {
-  if (error) console.error(`Supabase 書き込み失敗 (${where})`, error);
+  if (!error) return;
+  console.error(`Supabase 書き込み失敗 (${where})`, error);
+  showToast("保存に失敗しました。通信を確認して、もう一度お試しください");
+}
+
+// 読み込み失敗：コンソールのみ（読み込みは次回の再取得で回復しうるため）
+function logError(where: string, error: unknown) {
+  if (error) console.error(`Supabase 読み込み失敗 (${where})`, error);
 }
 
 // --- 読み込み（自分の全データ） ---
@@ -117,10 +126,10 @@ export async function fetchAll(): Promise<DB> {
     supabase.from("done_logs").select("*"),
     supabase.from("day_notes").select("*"),
   ]);
-  if (items.error) warn("fetch items", items.error);
-  if (steps.error) warn("fetch steps", steps.error);
-  if (logs.error) warn("fetch logs", logs.error);
-  if (notes.error) warn("fetch day_notes", notes.error);
+  if (items.error) logError("fetch items", items.error);
+  if (steps.error) logError("fetch steps", steps.error);
+  if (logs.error) logError("fetch logs", logs.error);
+  if (notes.error) logError("fetch day_notes", notes.error);
   db.items = (items.data ?? []).map((r) => toItem(r as ItemRow));
   db.steps = (steps.data ?? []).map((r) => toStep(r as StepRow));
   db.doneLogs = (logs.data ?? []).map((r) => toLog(r as LogRow));
@@ -156,7 +165,7 @@ export async function updateItem(i: Item) {
   );
 }
 export async function deleteItemRow(id: string) {
-  // steps / today_items は外部キーの cascade で一緒に消える。
+  // steps は外部キーの cascade で一緒に消える。
   // できたことログ（done_logs）は履歴として残すので消さない。
   warn("deleteItem", (await supabase.from("items").delete().eq("id", id)).error);
 }

@@ -8,6 +8,7 @@ import TodayScreen from "./screens/TodayScreen";
 import TaskListView from "./screens/TaskListView";
 import CalendarScreen from "./screens/CalendarScreen";
 import LoginScreen from "./screens/LoginScreen";
+import Toast from "./components/Toast";
 
 type Tab = "today" | "future" | "calendar";
 
@@ -69,6 +70,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <Toast />
       <main className="app__body" style={{ paddingTop: 16 }}>
         {tab === "today" && <TodayScreen />}
         {tab === "future" && <TaskListView mode="future" />}
