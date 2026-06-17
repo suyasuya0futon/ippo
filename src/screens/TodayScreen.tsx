@@ -229,7 +229,7 @@ function TodayTaskRow({ item, db }: { item: Item; db: DB }) {
           style={{ padding: "0 0 10px 30px", fontSize: 13 }}
           onClick={() => setAdding(true)}
         >
-          ＋ 小さなステップを追加する
+          ＋ 小さな一歩を追加する
         </button>
       )}
     </div>
