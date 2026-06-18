@@ -9,6 +9,7 @@ import {
   emptyDB,
   type DB,
   type Item,
+  type Bucket,
   type Step,
   type DoneLog,
   type DayNote,
@@ -81,6 +82,12 @@ export function todayStr(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+/** "YYYY-MM-DD" の翌日 */
+function nextDateStr(dateStr: string): string {
+  const [y, m, dd] = dateStr.split("-").map(Number);
+  return todayStr(new Date(y, m - 1, dd + 1));
+}
+
 /**
  * 入力文字列から #タグ を取り出し、タイトルとタグ（1個）に分ける。
  * タグは「# または ＃ のあと、次の空白までの文字」。日本語でも安全。
@@ -119,7 +126,7 @@ export function allTags(d: DB): string[] {
 export function addItem(
   input: string,
   recurring: boolean,
-  scheduledDate: string | null = null
+  opts: { bucket?: Bucket; scheduledDate?: string | null } = {}
 ): string | null {
   const { title, tag } = parseTag(input);
   if (!title) return null;
@@ -128,10 +135,11 @@ export function addItem(
     title,
     tag,
     recurring,
-    // 毎日タスクは予定日を持たない。それ以外は渡された予定日（今日やる追加なら今日）。
-    scheduledDate: recurring ? null : scheduledDate,
-    bucket: "someday", // ステップ2で配置ロジックと一緒に正しく設定する（今は配置に未使用）
-    sortOrder: -Date.now(), // 新しいものほど上（昇順で先頭）。ステップ2で本採用。
+    // フラグ。予定日つきのときは配置に使わないが一応 someday を入れておく。
+    bucket: opts.bucket ?? "someday",
+    // 毎日タスクは予定日を持たない。それ以外は渡された予定日（カレンダー追加など）。
+    scheduledDate: recurring ? null : (opts.scheduledDate ?? null),
+    sortOrder: -Date.now(), // 新しいものほど上（昇順で先頭）
     status: "open",
     createdAt: now(),
   };
@@ -240,31 +248,38 @@ export function toggleRecurringToday(itemId: string) {
   }
 }
 
-// --- 今日やること（予定日 scheduledDate で管理） ---
+// --- いつやるか（フラグ bucket ／ 予定日 scheduledDate） ---
 
-/**
- * その一度きりタスクが「今日やる」に出るか。
- * 予定日が今日以前なら出す（過去日の繰り越しも含む）。毎日タスクは対象外。
- */
-export function isInToday(item: Item, date: string = todayStr()): boolean {
-  return !item.recurring && item.scheduledDate != null && item.scheduledDate <= date;
+/** 表示上のバケット。予定日つきは日付から導出、なければフラグ(bucket)。 */
+export function effectiveBucket(item: Item, date: string = todayStr()): Bucket {
+  if (item.scheduledDate != null) {
+    if (item.scheduledDate <= date) return "today";
+    if (item.scheduledDate === nextDateStr(date)) return "tomorrow";
+    return "soon";
+  }
+  return item.bucket;
 }
 
-/** 今日やるにする：予定日を今日にする（毎日タスクは予定日を持たない） */
-export function addToToday(itemId: string) {
-  const date = todayStr();
+/** フラグ(bucket)を変更し、移動先の先頭に出す。毎日タスク・予定日つきは対象外。 */
+export function setBucket(itemId: string, bucket: Bucket) {
   optimistic((d) => {
     const it = d.items.find((x) => x.id === itemId);
-    if (!it || it.recurring) return;
-    it.scheduledDate = date;
+    if (!it || it.recurring || it.scheduledDate != null) return;
+    it.bucket = bucket;
+    it.sortOrder = -Date.now(); // 移動先の先頭へ
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);
 }
 
-/** 今日やるから外す：予定日を未定（null）に戻す */
-export function removeFromToday(itemId: string) {
-  setScheduledDate(itemId, null);
+/** 🌱 今日やるにする */
+export function addToToday(itemId: string) {
+  setBucket(itemId, "today");
+}
+
+/** ⏳ 今後やるに移動（近日中へ。いつか送りで埋もれさせない） */
+export function moveToFuture(itemId: string) {
+  setBucket(itemId, "soon");
 }
 
 /** 予定日を任意の日付に設定（null で未定）。毎日タスクは対象外。 */
@@ -273,6 +288,8 @@ export function setScheduledDate(itemId: string, date: string | null) {
     const it = d.items.find((x) => x.id === itemId);
     if (!it || it.recurring) return;
     it.scheduledDate = date;
+    // 予定日を外したらフラグに戻る。設計どおり戻り先は「いつか」。
+    if (date == null) it.bucket = "someday";
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);

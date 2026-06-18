@@ -186,7 +186,7 @@ export default function CalendarScreen() {
             autoFocus
             placeholder="この日に予定するタスク（例：病院に行く #からだ）"
             onSubmit={(input) => {
-              addItem(input, false, selected);
+              addItem(input, false, { scheduledDate: selected });
               setAddingPlan(false);
             }}
           />

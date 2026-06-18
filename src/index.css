@@ -139,6 +139,29 @@ body {
   min-width: 0;
 }
 
+/* 開閉スイッチ（見出しの左半分）。タップで畳む。 */
+.section-head__toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-align: left;
+}
+
+.section-head__caret {
+  font-size: 11px;
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
 .add-btn {
   flex-shrink: 0;
   border: none;

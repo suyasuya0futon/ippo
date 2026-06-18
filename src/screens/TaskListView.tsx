@@ -1,14 +1,14 @@
-// 今日やる / 今後やる の共通ビュー。mode で振る舞いを切り替える。
-// 追加は各セクション見出しの ➕ から（押したときだけ入力欄が出る／1件追加で閉じる）。
-// 追加する型はセクションで決まるので「毎日くりかえす」チェックは無い。
+// 今日やる / 今後やる の共通ビュー。
+// 配置は bucket（フラグ）／予定日から導出。並びは手動（sortOrder 昇順）。自動ソートしない。
+// 追加は各セクション見出しの ➕ から（押したときだけ入力欄／1件追加で閉じる）。型はセクションで決まる。
 import { useState, type ReactNode } from "react";
 import {
   useStore,
   todayStr,
+  effectiveBucket,
   addItem,
   addToToday,
-  removeFromToday,
-  setScheduledDate,
+  moveToFuture,
   addStep,
   toggleStep,
   deleteStep,
@@ -20,48 +20,50 @@ import {
   isDoneToday,
   toggleRecurringToday,
 } from "../store";
-import type { DB, Item } from "../types";
+import type { Bucket, DB, Item } from "../types";
 import { TagChip } from "../components/TagChip";
 import ItemInput from "../components/ItemInput";
 
 type Mode = "today" | "future";
 
-// タグ降順で並べる（タグ無しは末尾）
-const byTagDesc = (a: Item, b: Item) => (b.tag ?? "").localeCompare(a.tag ?? "", "ja");
+// 手動の並び（sortOrder 昇順。小さいほど上）
+const bySortOrder = (a: Item, b: Item) => a.sortOrder - b.sortOrder;
 
-// 見出しの横に出す「3/6達成」。全部できたら 🎉。
-function Count({ done, total }: { done: number; total: number }) {
-  if (total === 0) return null;
-  const complete = done === total;
-  return (
-    <span
-      style={{
-        marginLeft: 8,
-        fontSize: 13,
-        fontWeight: 400,
-        color: complete ? "var(--done)" : "var(--text-soft)",
-      }}
-    >
-      {done}/{total}達成{complete ? "🎉" : ""}
-    </span>
-  );
+// 見出しタイトルの後ろに付ける残数ラベル。
+// 空セクション（total 0）は何も出さない。残あり＝（N）。
+// celebrate=true（今日やる側）で「タスクがあって全部完了」なら 🎉。
+function countLabel(remaining: number, total: number, celebrate: boolean): string {
+  if (total === 0) return "";
+  if (remaining > 0) return `（${remaining}）`;
+  return celebrate ? " 🎉" : "";
 }
 
-// セクション見出し（タイトル＋達成数 ＋ 右端の絵文字 ➕）
+// セクション見出し。左（タイトル）=開閉スイッチ、右＝追加 ➕。
 function SectionHead({
   children,
-  open,
-  onToggle,
+  collapsed,
+  onToggleCollapse,
+  addOpen,
+  onToggleAdd,
 }: {
   children: ReactNode;
-  open: boolean;
-  onToggle: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  addOpen: boolean;
+  onToggleAdd: () => void;
 }) {
   return (
     <div className="section-head">
-      <span className="section-head__title">{children}</span>
-      <button className="add-btn" aria-label={open ? "閉じる" : "追加"} onClick={onToggle}>
-        {open ? "✕" : "➕"}
+      <button
+        className="section-head__toggle"
+        aria-label={collapsed ? "開く" : "閉じる"}
+        onClick={onToggleCollapse}
+      >
+        <span className="section-head__caret">{collapsed ? "▸" : "▾"}</span>
+        {children}
+      </button>
+      <button className="add-btn" aria-label={addOpen ? "閉じる" : "追加"} onClick={onToggleAdd}>
+        {addOpen ? "✕" : "➕"}
       </button>
     </div>
   );
@@ -69,133 +71,177 @@ function SectionHead({
 
 export default function TaskListView({ mode }: { mode: Mode }) {
   const db = useStore();
-  // どのセクションの入力欄が開いているか（"habit" | "task" | "future" | null）
   const [addOpen, setAddOpen] = useState<string | null>(null);
+  // 畳まれているセクション（既定は全部開く。リロードで戻る＝覚えない）
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
   const date = todayStr();
-  const toggle = (key: string) => setAddOpen((cur) => (cur === key ? null : key));
 
-  // ===== 今後やる =====
-  if (mode === "future") {
-    const futureItems = db.items
-      .filter(
-        (i) =>
-          !i.recurring &&
-          i.status === "open" &&
-          (i.scheduledDate == null || i.scheduledDate > date)
-      )
-      .sort((a, b) => {
-        if (a.scheduledDate && b.scheduledDate) {
-          return a.scheduledDate.localeCompare(b.scheduledDate) || byTagDesc(a, b);
-        }
-        if (a.scheduledDate && !b.scheduledDate) return -1;
-        if (!a.scheduledDate && b.scheduledDate) return 1;
-        return byTagDesc(a, b);
-      });
+  const toggleCollapse = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
+  // ➕ は新規追加だけ。アコーディオン開閉とは無関係（閉じたままでも入力欄を出して追加できる）。
+  const toggleAdd = (key: string) => setAddOpen((cur) => (cur === key ? null : key));
+
+  // セクション（見出し＋追加欄＋リスト）を1つ描く
+  function section(
+    key: Bucket | "habit" | "task",
+    title: ReactNode,
+    items: Item[],
+    placeholder: string,
+    onAdd: (input: string) => void,
+    emptyText: string,
+    habitDoneOf?: (it: Item) => boolean
+  ) {
+    const isCollapsed = collapsed.has(key);
     return (
-      <div>
-        <SectionHead open={addOpen === "future"} onToggle={() => toggle("future")}>
-          今後やる
+      <>
+        <SectionHead
+          collapsed={isCollapsed}
+          onToggleCollapse={() => toggleCollapse(key)}
+          addOpen={addOpen === key}
+          onToggleAdd={() => toggleAdd(key)}
+        >
+          {title}
         </SectionHead>
-        {addOpen === "future" && (
+        {/* 追加欄はアコーディオンの開閉とは独立（閉じてても出る） */}
+        {addOpen === key && (
           <div className="card">
             <ItemInput
               showRecurring={false}
               autoFocus
-              placeholder="いつかやること（例：服を処分する #家事）"
+              placeholder={placeholder}
               onSubmit={(input) => {
-                addItem(input, false, null);
+                onAdd(input);
                 setAddOpen(null);
               }}
             />
           </div>
         )}
-        <div className="card">
-          {futureItems.length === 0 ? (
-            <div className="empty">
-              今後やるタスクはありません。{"\n"}右上の ➕ から書けます。
-            </div>
-          ) : (
-            futureItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode="future" />)
-          )}
-        </div>
+        {/* リストは畳める */}
+        {!isCollapsed && (
+          <div className="card">
+            {items.length === 0 ? (
+              <div className="empty" style={{ padding: "12px 8px" }}>
+                {emptyText}
+              </div>
+            ) : (
+              items.map((it) => (
+                <TaskRow
+                  key={it.id}
+                  item={it}
+                  db={db}
+                  mode={mode}
+                  habitDone={habitDoneOf ? habitDoneOf(it) : undefined}
+                />
+              ))
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ===== 今後やる =====
+  if (mode === "future") {
+    const inBucket = (b: Bucket) =>
+      db.items
+        .filter((i) => !i.recurring && i.status === "open" && effectiveBucket(i, date) === b)
+        .sort(bySortOrder);
+    const tomorrow = inBucket("tomorrow");
+    const soon = inBucket("soon");
+    const someday = inBucket("someday");
+
+    return (
+      <div>
+        {section(
+          "tomorrow",
+          `明日${countLabel(tomorrow.length, tomorrow.length, false)}`,
+          tomorrow,
+          "明日やること（例：銀行に行く）",
+          (input) => addItem(input, false, { bucket: "tomorrow" }),
+          "明日のタスクはありません。"
+        )}
+        {section(
+          "soon",
+          `近日中${countLabel(soon.length, soon.length, false)}`,
+          soon,
+          "近日中にやること（例：本を返す）",
+          (input) => addItem(input, false, { bucket: "soon" }),
+          "近日中のタスクはありません。"
+        )}
+        {section(
+          "someday",
+          `いつか${countLabel(someday.length, someday.length, false)}`,
+          someday,
+          "いつかやること（例：服を処分する #家事）",
+          (input) => addItem(input, false, { bucket: "someday" }),
+          "いつかのタスクはありません。"
+        )}
       </div>
     );
   }
 
   // ===== 今日やる =====
-  const habits = db.items.filter((i) => i.recurring).sort(byTagDesc);
+  // その日の完了時刻（毎日タスク用。doneLog から）
+  const habitDoneAt = (id: string) =>
+    db.doneLogs.find((l) => l.refType === "item" && l.refId === id && l.date === date)?.doneAt ??
+    "";
 
-  // 今日やる = 予定日が今日以前の未完了 ∪ 今日完了したもの（打ち消し線で残す）
+  // 習慣：未完了が上（手動順）→ 完了は下（新しい完了ほど上、早い完了ほど下）
+  const habits = db.items
+    .filter((i) => i.recurring)
+    .sort((a, b) => {
+      const ad = isDoneToday(db, a.id);
+      const bd = isDoneToday(db, b.id);
+      if (ad !== bd) return ad ? 1 : -1;
+      if (!ad) return a.sortOrder - b.sortOrder;
+      return habitDoneAt(b.id).localeCompare(habitDoneAt(a.id));
+    });
+
+  // 今日のタスク：未完了が上（手動順）→ 完了は下（新しい完了ほど上、早い完了ほど下）
   const todayItems = db.items
     .filter(
       (i) =>
         !i.recurring &&
-        ((i.scheduledDate != null && i.scheduledDate <= date && i.status === "open") ||
-          isDoneToday(db, i.id))
+        effectiveBucket(i, date) === "today" &&
+        (i.status === "open" || isDoneToday(db, i.id))
     )
-    .sort(byTagDesc);
+    .sort((a, b) => {
+      const ao = a.status === "open";
+      const bo = b.status === "open";
+      if (ao !== bo) return ao ? -1 : 1;
+      if (ao) return a.sortOrder - b.sortOrder;
+      return (b.doneAt ?? "").localeCompare(a.doneAt ?? "");
+    });
 
-  const habitsDone = habits.filter((h) => isDoneToday(db, h.id)).length;
-  const taskDone = todayItems.filter((i) => isDoneToday(db, i.id)).length;
+  const habitsRemaining = habits.filter((h) => !isDoneToday(db, h.id)).length;
+  const todayRemaining = todayItems.filter((i) => i.status === "open").length;
 
   return (
     <div>
-      {/* 毎日の習慣 */}
-      <SectionHead open={addOpen === "habit"} onToggle={() => toggle("habit")}>
-        毎日の習慣
-        <Count done={habitsDone} total={habits.length} />
-      </SectionHead>
-      {addOpen === "habit" && (
-        <div className="card">
-          <ItemInput
-            showRecurring={false}
-            autoFocus
-            placeholder="毎日やること（例：プロテイン飲む #からだ）"
-            onSubmit={(input) => {
-              addItem(input, true);
-              setAddOpen(null);
-            }}
-          />
-        </div>
+      {section(
+        "habit",
+        `毎日の習慣${countLabel(habitsRemaining, habits.length, true)}`,
+        habits,
+        "毎日やること（例：プロテイン飲む #からだ）",
+        (input) => addItem(input, true),
+        "習慣はありません。",
+        (it) => isDoneToday(db, it.id)
       )}
-      {habits.length > 0 && (
-        <div className="card">
-          {habits.map((h) => (
-            <TaskRow key={h.id} item={h} db={db} mode="today" habitDone={isDoneToday(db, h.id)} />
-          ))}
-        </div>
+      {section(
+        "task",
+        `今日のタスク${countLabel(todayRemaining, todayItems.length, true)}`,
+        todayItems,
+        "今日やること（例：薬を飲む #からだ）",
+        (input) => addItem(input, false, { bucket: "today" }),
+        "今日やることは、まだありません。右上の ➕ で追加できます。"
       )}
-
-      {/* 今日のタスク */}
-      <SectionHead open={addOpen === "task"} onToggle={() => toggle("task")}>
-        今日のタスク
-        <Count done={taskDone} total={todayItems.length} />
-      </SectionHead>
-      {addOpen === "task" && (
-        <div className="card">
-          <ItemInput
-            showRecurring={false}
-            autoFocus
-            placeholder="今日やること（例：薬を飲む #からだ）"
-            onSubmit={(input) => {
-              addItem(input, false, date);
-              setAddOpen(null);
-            }}
-          />
-        </div>
-      )}
-      <div className="card">
-        {todayItems.length === 0 ? (
-          <div className="empty">
-            今日やることは、まだありません。{"\n"}
-            右上の ➕ で追加できます。ひとつで十分です。
-          </div>
-        ) : (
-          todayItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode="today" />)
-        )}
-      </div>
     </div>
   );
 }
@@ -217,6 +263,7 @@ function TaskRow({
   const [stepText, setStepText] = useState("");
 
   const isHabit = item.recurring;
+  const isFlag = !isHabit && item.scheduledDate == null; // 🌱はフラグタスクのみ
   const steps = db.steps.filter((s) => s.itemId === item.id).sort((a, b) => a.order - b.order);
   const isDone = isHabit ? Boolean(habitDone) : item.status === "done";
 
@@ -271,19 +318,18 @@ function TaskRow({
           {item.title}
         </span>
         <span className="icon-actions">
-          {/* 今日やる：完了前のみ「今日から外す」。習慣は外せない（予定日を持たない）。 */}
-          {mode === "today" && !isHabit && !isDone && (
+          {/* フラグタスクのみ。今日やる＝⏳今後やるへ（近日中）／今後やる＝🌱今日やるに */}
+          {mode === "today" && isFlag && !isDone && (
             <button
-              className="icon-btn icon-btn--active"
-              title="今日から外す"
-              aria-label="今日から外す"
-              onClick={() => removeFromToday(item.id)}
+              className="icon-btn"
+              title="今後やるに移動"
+              aria-label="今後やるに移動"
+              onClick={() => moveToFuture(item.id)}
             >
-              🌱
+              ⏳
             </button>
           )}
-          {/* 今後やる：背景なし🌱で「今日やるにする」 */}
-          {mode === "future" && (
+          {mode === "future" && isFlag && (
             <button
               className="icon-btn"
               title="今日やるにする"
@@ -313,46 +359,19 @@ function TaskRow({
         </span>
       </div>
 
-      {/* 今後やる：予定日の指定・変更・なし */}
-      {mode === "future" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px 10px 4px" }}>
-          <span style={{ fontSize: 12, color: "var(--text-soft)" }}>予定日</span>
-          <input
-            type="date"
-            value={item.scheduledDate ?? ""}
-            onChange={(e) => setScheduledDate(item.id, e.target.value || null)}
-            style={{ fontSize: 13, padding: "5px 8px", width: "auto" }}
-          />
-          {item.scheduledDate && (
-            <button
-              className="btn--ghost btn"
-              style={{ fontSize: 12, padding: "2px 6px" }}
-              onClick={() => setScheduledDate(item.id, null)}
-            >
-              日付なし
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ステップ（今日やるのときだけ表示。今後やるでは出さない） */}
+      {/* ステップ（今日やるのときだけ。今後やるでは砕かない） */}
       {mode === "today" && steps.length > 0 && (
         <div style={{ paddingLeft: 30 }}>
           {steps.map((s) => (
             <div key={s.id} className="step">
-              {/* 今後やるでは完了させない（チェックは出さない。表示・追加・削除のみ） */}
-              {mode === "today" && (
-                <button
-                  className={`step__check ${s.done ? "step__check--done" : ""}`}
-                  onClick={() => toggleStep(s.id)}
-                  aria-label={s.done ? "完了を取り消す" : "完了にする"}
-                >
-                  {s.done ? "✓" : ""}
-                </button>
-              )}
-              <span className={`step__label ${mode === "today" && s.done ? "step__label--done" : ""}`}>
-                {s.title}
-              </span>
+              <button
+                className={`step__check ${s.done ? "step__check--done" : ""}`}
+                onClick={() => toggleStep(s.id)}
+                aria-label={s.done ? "完了を取り消す" : "完了にする"}
+              >
+                {s.done ? "✓" : ""}
+              </button>
+              <span className={`step__label ${s.done ? "step__label--done" : ""}`}>{s.title}</span>
               <button
                 className="btn--ghost btn"
                 onClick={() => deleteStep(s.id)}
@@ -365,7 +384,7 @@ function TaskRow({
         </div>
       )}
 
-      {/* 「小さな一歩を追加」は今日やるのときだけ（今後やるでは砕かない／習慣にも出さない） */}
+      {/* 「小さな一歩を追加」は今日やるのときだけ（習慣にも出さない） */}
       {mode === "today" &&
         !isHabit &&
         (adding ? (
