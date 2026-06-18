@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import { hydrate, seedIfEmpty, clearStore } from "./store";
+import { hydrate, seedIfEmpty, promote, clearStore } from "./store";
 import TodayScreen from "./screens/TodayScreen";
 import TaskListView from "./screens/TaskListView";
 import CalendarScreen from "./screens/CalendarScreen";
@@ -62,6 +62,7 @@ export default function App() {
     (async () => {
       await hydrate();
       await seedIfEmpty();
+      await promote();
       if (!cancelled) setReadyUserId(userId);
     })();
     return () => {

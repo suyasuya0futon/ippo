@@ -165,11 +165,10 @@ export async function bulkInsert(db: DB) {
 export async function insertItem(i: Item) {
   warn("insertItem", (await supabase.from("items").insert(itemRow(i))).error);
 }
-export async function updateItem(i: Item) {
-  warn(
-    "updateItem",
-    (await supabase.from("items").update(itemRow(i)).eq("id", i.id)).error
-  );
+export async function updateItem(i: Item): Promise<boolean> {
+  const { error } = await supabase.from("items").update(itemRow(i)).eq("id", i.id);
+  warn("updateItem", error);
+  return !error;
 }
 export async function deleteItemRow(id: string) {
   // steps は外部キーの cascade で一緒に消える。
@@ -210,4 +209,26 @@ export async function updateDayNote(n: DayNote) {
 }
 export async function deleteDayNote(id: string) {
   warn("deleteDayNote", (await supabase.from("day_notes").delete().eq("id", id)).error);
+}
+
+// --- ユーザー設定（フラグ自動繰り上げの判定用） ---
+
+export async function getLastPromoteDate(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("last_promote_date")
+    .maybeSingle();
+  if (error) {
+    logError("fetch user_settings", error);
+    return null;
+  }
+  return ((data?.last_promote_date as string | null) ?? null) || null;
+}
+
+export async function setLastPromoteDate(date: string) {
+  warn(
+    "setLastPromoteDate",
+    (await supabase.from("user_settings").upsert({ last_promote_date: date }, { onConflict: "user_id" }))
+      .error
+  );
 }

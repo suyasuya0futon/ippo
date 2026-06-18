@@ -88,6 +88,20 @@ function nextDateStr(dateStr: string): string {
   return todayStr(new Date(y, m - 1, dd + 1));
 }
 
+/** その日の週初め（月曜）の "YYYY-MM-DD" */
+function mondayOf(dateStr: string): string {
+  const [y, m, dd] = dateStr.split("-").map(Number);
+  const d = new Date(y, m - 1, dd);
+  const dow = d.getDay(); // 0=日..6=土
+  d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+  return todayStr(d);
+}
+
+/** last から today までに「週（月曜）」をまたいだか */
+function crossedWeek(last: string, today: string): boolean {
+  return mondayOf(today) > mondayOf(last);
+}
+
 /**
  * 入力文字列から #タグ を取り出し、タイトルとタグ（1個）に分ける。
  * タグは「# または ＃ のあと、次の空白までの文字」。日本語でも安全。
@@ -270,6 +284,63 @@ export function setBucket(itemId: string, bucket: Bucket) {
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);
+}
+
+/**
+ * 起動時の自動繰り上げ。前回繰り上げ日(last_promote_date)と比較して:
+ * - 日が変わった → bucket "tomorrow" → "today"
+ * - 週(月曜)をまたいだ → bucket "soon" → "tomorrow"
+ * 繰り上げたものは移動先の末尾へ。予定日つき・毎日タスクは対象外。
+ * 初回(last=null)は基準日を入れるだけで繰り上げない。
+ */
+export async function promote() {
+  const today = todayStr();
+  const last = await remote.getLastPromoteDate();
+  if (last === today) return; // 今日はもう繰り上げ済み（端末間の二重も防ぐ）
+  if (last == null) {
+    await remote.setLastPromoteDate(today); // 初回は基準を作るだけ
+    return;
+  }
+
+  const weekChanged = crossedWeek(last, today);
+  const isFlag = (i: Item) => !i.recurring && i.scheduledDate == null;
+  const tomorrowItems = db.items.filter((i) => isFlag(i) && i.bucket === "tomorrow");
+  const soonItems = weekChanged ? db.items.filter((i) => isFlag(i) && i.bucket === "soon") : [];
+  const changedIds = new Set([...tomorrowItems, ...soonItems].map((i) => i.id));
+
+  let allOk = true;
+  if (changedIds.size > 0) {
+    const base = Date.now();
+    optimistic((d) => {
+      // tomorrow → today（末尾。元の並びは保つ）
+      d.items
+        .filter((i) => tomorrowItems.some((x) => x.id === i.id))
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .forEach((it, i) => {
+          it.bucket = "today";
+          it.sortOrder = base + i;
+        });
+      // soon → tomorrow（末尾）
+      d.items
+        .filter((i) => soonItems.some((x) => x.id === i.id))
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .forEach((it, i) => {
+          it.bucket = "tomorrow";
+          it.sortOrder = base + 1_000_000 + i;
+        });
+    });
+    // item 更新が全部成功してから last_promote_date を進める（部分失敗で“繰り上げ済み”にしない）
+    const results = await Promise.all(
+      [...changedIds].map((id) => {
+        const it = db.items.find((x) => x.id === id);
+        return it ? remote.updateItem(it) : Promise.resolve(true);
+      })
+    );
+    allOk = results.every(Boolean);
+  }
+
+  // 全部成功（または繰り上げ対象なし）のときだけ基準日を進める。失敗したら次回再試行。
+  if (allOk) await remote.setLastPromoteDate(today);
 }
 
 /** 🌱 今日やるにする */
