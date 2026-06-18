@@ -35,6 +35,7 @@ export default function CalendarScreen() {
     return { year: d.getFullYear(), month: d.getMonth() }; // month: 0-11
   });
   const [selected, setSelected] = useState<string>(today);
+  const [addingPlan, setAddingPlan] = useState(false);
 
   // メモ一覧
   if (view === "notes") {
@@ -168,7 +169,29 @@ export default function CalendarScreen() {
         <DayMemo key={selected} date={selected} />
       </div>
 
-      <p className="section-title">この日の予定</p>
+      <div className="section-head">
+        <span className="section-head__title">この日の予定</span>
+        <button
+          className="add-btn"
+          aria-label={addingPlan ? "閉じる" : "この日に予定を追加"}
+          onClick={() => setAddingPlan((v) => !v)}
+        >
+          {addingPlan ? "✕" : "➕"}
+        </button>
+      </div>
+      {addingPlan && (
+        <div className="card">
+          <ItemInput
+            showRecurring={false}
+            autoFocus
+            placeholder="この日に予定するタスク（例：病院に行く #からだ）"
+            onSubmit={(input) => {
+              addItem(input, false, selected);
+              setAddingPlan(false);
+            }}
+          />
+        </div>
+      )}
       <div className="card">
         {scheduledTasks.length === 0 ? (
           <div className="empty" style={{ padding: "12px 8px" }}>
@@ -184,13 +207,6 @@ export default function CalendarScreen() {
             </div>
           ))
         )}
-        <div style={{ marginTop: 10 }}>
-          <ItemInput
-            showRecurring={false}
-            placeholder="この日に予定を追加"
-            onSubmit={(input) => addItem(input, false, selected)}
-          />
-        </div>
       </div>
 
       <p className="section-title">できたこと</p>

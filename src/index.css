@@ -123,6 +123,32 @@ body {
   margin: 18px 4px 8px;
 }
 
+/* セクション見出し（タイトル＋達成数 ＋ 右端の ➕）。同じ行・改行させない。 */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 18px 4px 8px;
+}
+
+.section-head__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-soft);
+  min-width: 0;
+}
+
+.add-btn {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
 .muted {
   color: var(--text-soft);
 }

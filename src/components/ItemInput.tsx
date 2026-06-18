@@ -29,7 +29,7 @@ export default function ItemInput({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // いま入力中の末尾が "#部分文字列" なら、その続きのタグ候補を出す
-  const match = text.match(/[#＃]([^\s#＃　]*)$/);
+  const match = text.match(/[#＃]([^\s#＃]*)$/);
   const partial = match ? match[1] : null;
   const suggestions =
     partial !== null
@@ -39,7 +39,7 @@ export default function ItemInput({
       : [];
 
   function pickTag(tag: string) {
-    setText(text.replace(/[#＃][^\s#＃　]*$/, `#${tag} `));
+    setText(text.replace(/[#＃][^\s#＃]*$/, `#${tag} `));
     inputRef.current?.focus();
   }
 

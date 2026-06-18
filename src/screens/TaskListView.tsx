@@ -1,6 +1,7 @@
 // 今日やる / 今後やる の共通ビュー。mode で振る舞いを切り替える。
-// 追加・編集・削除もここで行う（旧「一覧」タブの機能を引き継いだ）。
-import { useEffect, useRef, useState } from "react";
+// 追加は各セクション見出しの ➕ から（押したときだけ入力欄が出る／1件追加で閉じる）。
+// 追加する型はセクションで決まるので「毎日くりかえす」チェックは無い。
+import { useState, type ReactNode } from "react";
 import {
   useStore,
   todayStr,
@@ -46,36 +47,36 @@ function Count({ done, total }: { done: number; total: number }) {
   );
 }
 
+// セクション見出し（タイトル＋達成数 ＋ 右端の絵文字 ➕）
+function SectionHead({
+  children,
+  open,
+  onToggle,
+}: {
+  children: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="section-head">
+      <span className="section-head__title">{children}</span>
+      <button className="add-btn" aria-label={open ? "閉じる" : "追加"} onClick={onToggle}>
+        {open ? "✕" : "➕"}
+      </button>
+    </div>
+  );
+}
+
 export default function TaskListView({ mode }: { mode: Mode }) {
   const db = useStore();
-  const [picking, setPicking] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
-
-  // 「今日やることを選ぶ」を開いたら、その候補リストへスクロール
-  useEffect(() => {
-    if (picking) pickerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [picking]);
+  // どのセクションの入力欄が開いているか（"habit" | "task" | "future" | null）
+  const [addOpen, setAddOpen] = useState<string | null>(null);
 
   const date = todayStr();
-
-  // 追加：今日やるでは予定日=今日、今後やるでは未定。毎日チェック時は習慣（予定日なし）。
-  // 最初から予定日付きで作る（insert 1回。addToToday の追い書きはしない＝レース回避）。
-  function onAdd(input: string, recurring: boolean) {
-    addItem(input, recurring, mode === "today" ? date : null);
-  }
-
-  const addForm = (
-    <>
-      <p className="section-title">タスクを追加</p>
-      <div className="card">
-        <ItemInput onSubmit={onAdd} />
-      </div>
-    </>
-  );
+  const toggle = (key: string) => setAddOpen((cur) => (cur === key ? null : key));
 
   // ===== 今後やる =====
   if (mode === "future") {
-    // 日付未定 or 明日以降の未完了（毎日タスクは出さない）
     const futureItems = db.items
       .filter(
         (i) =>
@@ -84,7 +85,6 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           (i.scheduledDate == null || i.scheduledDate > date)
       )
       .sort((a, b) => {
-        // 日付ありを先（昇順）、日付なしは後ろ。同条件はタグ降順。
         if (a.scheduledDate && b.scheduledDate) {
           return a.scheduledDate.localeCompare(b.scheduledDate) || byTagDesc(a, b);
         }
@@ -95,12 +95,26 @@ export default function TaskListView({ mode }: { mode: Mode }) {
 
     return (
       <div>
-        {addForm}
-        <p className="section-title">今後やる</p>
+        <SectionHead open={addOpen === "future"} onToggle={() => toggle("future")}>
+          今後やる
+        </SectionHead>
+        {addOpen === "future" && (
+          <div className="card">
+            <ItemInput
+              showRecurring={false}
+              autoFocus
+              placeholder="いつかやること（例：服を処分する #家事）"
+              onSubmit={(input) => {
+                addItem(input, false, null);
+                setAddOpen(null);
+              }}
+            />
+          </div>
+        )}
         <div className="card">
           {futureItems.length === 0 ? (
             <div className="empty">
-              今後やるタスクはありません。{"\n"}上の「タスクを追加」から書けます。
+              今後やるタスクはありません。{"\n"}右上の ➕ から書けます。
             </div>
           ) : (
             futureItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode="future" />)
@@ -123,82 +137,65 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     )
     .sort(byTagDesc);
 
-  // 候補 = 今日やるに出ていない未完了の一度きりタスク（予定日が未定 or 未来）
-  const candidates = db.items.filter(
-    (i) =>
-      !i.recurring &&
-      i.status === "open" &&
-      !(i.scheduledDate != null && i.scheduledDate <= date)
-  );
-
   const habitsDone = habits.filter((h) => isDoneToday(db, h.id)).length;
   const taskDone = todayItems.filter((i) => isDoneToday(db, i.id)).length;
 
   return (
     <div>
-      {addForm}
-
+      {/* 毎日の習慣 */}
+      <SectionHead open={addOpen === "habit"} onToggle={() => toggle("habit")}>
+        毎日の習慣
+        <Count done={habitsDone} total={habits.length} />
+      </SectionHead>
+      {addOpen === "habit" && (
+        <div className="card">
+          <ItemInput
+            showRecurring={false}
+            autoFocus
+            placeholder="毎日やること（例：プロテイン飲む #からだ）"
+            onSubmit={(input) => {
+              addItem(input, true);
+              setAddOpen(null);
+            }}
+          />
+        </div>
+      )}
       {habits.length > 0 && (
-        <>
-          <p className="section-title">
-            毎日の習慣
-            <Count done={habitsDone} total={habits.length} />
-          </p>
-          <div className="card">
-            {habits.map((h) => {
-              const done = isDoneToday(db, h.id);
-              return <TaskRow key={h.id} item={h} db={db} mode="today" habitDone={done} />;
-            })}
-          </div>
-        </>
+        <div className="card">
+          {habits.map((h) => (
+            <TaskRow key={h.id} item={h} db={db} mode="today" habitDone={isDoneToday(db, h.id)} />
+          ))}
+        </div>
       )}
 
-      <p className="section-title">
+      {/* 今日のタスク */}
+      <SectionHead open={addOpen === "task"} onToggle={() => toggle("task")}>
         今日のタスク
         <Count done={taskDone} total={todayItems.length} />
-      </p>
+      </SectionHead>
+      {addOpen === "task" && (
+        <div className="card">
+          <ItemInput
+            showRecurring={false}
+            autoFocus
+            placeholder="今日やること（例：薬を飲む #からだ）"
+            onSubmit={(input) => {
+              addItem(input, false, date);
+              setAddOpen(null);
+            }}
+          />
+        </div>
+      )}
       <div className="card">
         {todayItems.length === 0 ? (
           <div className="empty">
             今日やることは、まだありません。{"\n"}
-            上で追加するか、下のボタンから選んでみましょう。{"\n"}
-            ひとつで十分です。
+            右上の ➕ で追加できます。ひとつで十分です。
           </div>
         ) : (
           todayItems.map((item) => <TaskRow key={item.id} item={item} db={db} mode="today" />)
         )}
       </div>
-
-      <button className="btn" style={{ width: "100%" }} onClick={() => setPicking((v) => !v)}>
-        {picking ? "閉じる" : "＋ 今日やることを選ぶ"}
-      </button>
-
-      {picking && (
-        <div className="card" style={{ marginTop: 12, scrollMarginTop: 12 }} ref={pickerRef}>
-          {candidates.length === 0 ? (
-            <div className="empty" style={{ padding: 12 }}>
-              追加できるものがありません。
-            </div>
-          ) : (
-            candidates.map((it) => (
-              <div className="taskitem" key={it.id}>
-                <span className="taskitem__title">
-                  <TagChip tag={it.tag} />
-                  {it.title}
-                </span>
-                <button
-                  className="icon-btn"
-                  title="今日に追加"
-                  aria-label="今日に追加"
-                  onClick={() => addToToday(it.id)}
-                >
-                  🌱
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -228,17 +225,17 @@ function TaskRow({
     setStepText("");
   }
 
-  // 編集モード：行全体を入力欄に
+  // 編集モード：行全体を入力欄に（種類は変えない＝recurring は保持）
   if (editing) {
     return (
       <div className="trow" style={{ padding: "8px 4px" }}>
         <ItemInput
           initialText={itemToInput(item)}
-          initialRecurring={item.recurring}
+          showRecurring={false}
           submitLabel="保存"
           autoFocus
-          onSubmit={(input, recurring) => {
-            editItem(item.id, input, recurring);
+          onSubmit={(input) => {
+            editItem(item.id, input, item.recurring);
             setEditing(false);
           }}
         />
@@ -318,9 +315,7 @@ function TaskRow({
 
       {/* 今後やる：予定日の指定・変更・なし */}
       {mode === "future" && (
-        <div
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px 10px 4px" }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px 10px 4px" }}>
           <span style={{ fontSize: 12, color: "var(--text-soft)" }}>予定日</span>
           <input
             type="date"
@@ -340,8 +335,8 @@ function TaskRow({
         </div>
       )}
 
-      {/* ステップ（あれば表示） */}
-      {steps.length > 0 && (
+      {/* ステップ（今日やるのときだけ表示。今後やるでは出さない） */}
+      {mode === "today" && steps.length > 0 && (
         <div style={{ paddingLeft: 30 }}>
           {steps.map((s) => (
             <div key={s.id} className="step">
@@ -370,8 +365,9 @@ function TaskRow({
         </div>
       )}
 
-      {/* 「小さな一歩を追加」を押したときだけ入力欄が出る（習慣には出さない） */}
-      {!isHabit &&
+      {/* 「小さな一歩を追加」は今日やるのときだけ（今後やるでは砕かない／習慣にも出さない） */}
+      {mode === "today" &&
+        !isHabit &&
         (adding ? (
           <div className="row" style={{ paddingLeft: 30, marginBottom: 10 }}>
             <input

@@ -88,7 +88,8 @@ export function todayStr(d: Date = new Date()): string {
  * 例: "GUコート袖縫う #裁縫" → { title: "GUコート袖縫う", tag: "裁縫" }
  */
 export function parseTag(input: string): { title: string; tag: string | null } {
-  const re = /[#＃]([^\s#＃　]+)/g;
+  // # のあと、空白までをタグとして扱う（\s は全角スペース U+3000 も拾う）
+  const re = /[#＃]([^\s#＃]+)/g;
   let tag: string | null = null;
   let m: RegExpExecArray | null;
   while ((m = re.exec(input)) !== null) {
@@ -96,7 +97,7 @@ export function parseTag(input: string): { title: string; tag: string | null } {
   }
   const title = input
     .replace(re, "")
-    .replace(/[\s　]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
   return { title, tag };
 }

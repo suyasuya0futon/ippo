@@ -34,35 +34,42 @@ function Splash({ text }: { text: string }) {
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
   const [session, setSession] = useState<Session | null | undefined>(undefined); // undefined = 確認中
-  const [ready, setReady] = useState(false);
+  // 読み込みが完了したユーザーID。これが現在のユーザーと一致したら表示OK。
+  const [readyUserId, setReadyUserId] = useState<string | null>(null);
 
   // ログイン状態を監視
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      // ログアウト時は読み込み完了状態もリセット（同ユーザー再ログイン時の一瞬の空表示を防ぐ）
+      if (!s) setReadyUserId(null);
+    });
     return () => subscription.unsubscribe();
   }, []);
 
   // ログインしたらデータを読み込む（初回は初期データを入れる）
+  // 依存はユーザーID のみ（トークン更新のたびに再読み込みしたくないため）。
+  const userId = session?.user?.id ?? null;
   useEffect(() => {
     let cancelled = false;
-    if (session) {
-      setReady(false);
-      (async () => {
-        await hydrate();
-        await seedIfEmpty();
-        if (!cancelled) setReady(true);
-      })();
-    } else {
+    if (!userId) {
       clearStore();
-      setReady(false);
+      return;
     }
+    (async () => {
+      await hydrate();
+      await seedIfEmpty();
+      if (!cancelled) setReadyUserId(userId);
+    })();
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id]);
+  }, [userId]);
+
+  const ready = Boolean(session) && readyUserId === userId;
 
   if (session === undefined) return <Splash text="読み込み中…" />;
   if (!session) return <LoginScreen />;
