@@ -6,16 +6,16 @@ import { supabase } from "./supabase";
 import { hydrate, seedIfEmpty, promote, clearStore } from "./store";
 import TodayScreen from "./screens/TodayScreen";
 import TaskListView from "./screens/TaskListView";
-import CalendarScreen from "./screens/CalendarScreen";
+import DoneBookScreen from "./screens/DoneBookScreen";
 import LoginScreen from "./screens/LoginScreen";
 import Toast from "./components/Toast";
 
-type Tab = "today" | "future" | "calendar";
+type Tab = "today" | "future" | "donebook";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "today", label: "今日やる", icon: "🌱" },
   { key: "future", label: "今後やる", icon: "⏳" },
-  { key: "calendar", label: "カレンダー", icon: "📅" },
+  { key: "donebook", label: "できた帳", icon: "📖" },
 ];
 
 function Splash({ text }: { text: string }) {
@@ -82,7 +82,7 @@ export default function App() {
       <main className="app__body" style={{ paddingTop: 16 }}>
         {tab === "today" && <TodayScreen />}
         {tab === "future" && <TaskListView mode="future" />}
-        {tab === "calendar" && <CalendarScreen />}
+        {tab === "donebook" && <DoneBookScreen />}
 
         <footer
           style={{

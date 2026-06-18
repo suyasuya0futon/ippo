@@ -11,7 +11,6 @@ import {
   type Bucket,
   type Step,
   type DoneLog,
-  type DayNote,
 } from "./types";
 
 // --- 行（DB）→ 型（アプリ）の変換 ---
@@ -22,7 +21,6 @@ type ItemRow = {
   tag: string | null;
   recurring: boolean;
   bucket: Bucket;
-  scheduled_date: string | null;
   sort_order: number;
   status: "open" | "done";
   created_at: string;
@@ -45,7 +43,6 @@ type LogRow = {
   tag: string | null;
   done_at: string;
 };
-type DayNoteRow = { id: string; date: string; note: string };
 
 const toItem = (r: ItemRow): Item => ({
   id: r.id,
@@ -53,7 +50,6 @@ const toItem = (r: ItemRow): Item => ({
   tag: r.tag ?? null,
   recurring: r.recurring,
   bucket: r.bucket ?? "someday",
-  scheduledDate: r.scheduled_date ?? null,
   sortOrder: r.sort_order ?? 0,
   status: r.status,
   createdAt: r.created_at,
@@ -76,7 +72,6 @@ const toLog = (r: LogRow): DoneLog => ({
   tag: r.tag ?? null,
   doneAt: r.done_at,
 });
-const toDayNote = (r: DayNoteRow): DayNote => ({ id: r.id, date: r.date, note: r.note });
 
 // --- 型（アプリ）→ 行（DB）。user_id は DB 側の既定値 auth.uid() に任せる ---
 
@@ -86,7 +81,6 @@ const itemRow = (i: Item) => ({
   tag: i.tag ?? null,
   recurring: i.recurring,
   bucket: i.bucket,
-  scheduled_date: i.scheduledDate ?? null,
   sort_order: i.sortOrder,
   status: i.status,
   created_at: i.createdAt,
@@ -109,7 +103,6 @@ const logRow = (l: DoneLog) => ({
   tag: l.tag ?? null,
   done_at: l.doneAt,
 });
-const dayNoteRow = (n: DayNote) => ({ id: n.id, date: n.date, note: n.note });
 
 // 書き込み失敗：コンソールに出し、画面にもトーストで知らせる。
 function warn(where: string, error: unknown) {
@@ -127,20 +120,17 @@ function logError(where: string, error: unknown) {
 
 export async function fetchAll(): Promise<DB> {
   const db: DB = structuredClone(emptyDB);
-  const [items, steps, logs, notes] = await Promise.all([
+  const [items, steps, logs] = await Promise.all([
     supabase.from("items").select("*"),
     supabase.from("steps").select("*"),
     supabase.from("done_logs").select("*"),
-    supabase.from("day_notes").select("*"),
   ]);
   if (items.error) logError("fetch items", items.error);
   if (steps.error) logError("fetch steps", steps.error);
   if (logs.error) logError("fetch logs", logs.error);
-  if (notes.error) logError("fetch day_notes", notes.error);
   db.items = (items.data ?? []).map((r) => toItem(r as ItemRow));
   db.steps = (steps.data ?? []).map((r) => toStep(r as StepRow));
   db.doneLogs = (logs.data ?? []).map((r) => toLog(r as LogRow));
-  db.dayNotes = (notes.data ?? []).map((r) => toDayNote(r as DayNoteRow));
   return db;
 }
 
@@ -154,9 +144,6 @@ export async function bulkInsert(db: DB) {
   }
   if (db.doneLogs.length) {
     warn("seed logs", (await supabase.from("done_logs").insert(db.doneLogs.map(logRow))).error);
-  }
-  if (db.dayNotes.length) {
-    warn("seed day_notes", (await supabase.from("day_notes").insert(db.dayNotes.map(dayNoteRow))).error);
   }
 }
 
@@ -200,15 +187,6 @@ export async function deleteLogsByRef(refType: "item" | "step", refId: string, d
   let q = supabase.from("done_logs").delete().eq("ref_type", refType).eq("ref_id", refId);
   if (date) q = q.eq("date", date);
   warn("deleteLogsByRef", (await q).error);
-}
-export async function insertDayNote(n: DayNote) {
-  warn("insertDayNote", (await supabase.from("day_notes").insert(dayNoteRow(n))).error);
-}
-export async function updateDayNote(n: DayNote) {
-  warn("updateDayNote", (await supabase.from("day_notes").update({ note: n.note }).eq("id", n.id)).error);
-}
-export async function deleteDayNote(id: string) {
-  warn("deleteDayNote", (await supabase.from("day_notes").delete().eq("id", id)).error);
 }
 
 // --- ユーザー設定（フラグ自動繰り上げの判定用） ---

@@ -12,7 +12,6 @@ import {
   type Bucket,
   type Step,
   type DoneLog,
-  type DayNote,
 } from "./types";
 import { seedDB } from "./seed";
 import * as remote from "./db";
@@ -82,12 +81,6 @@ export function todayStr(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
-/** "YYYY-MM-DD" の翌日 */
-function nextDateStr(dateStr: string): string {
-  const [y, m, dd] = dateStr.split("-").map(Number);
-  return todayStr(new Date(y, m - 1, dd + 1));
-}
-
 /** その日の週初め（月曜）の "YYYY-MM-DD" */
 function mondayOf(dateStr: string): string {
   const [y, m, dd] = dateStr.split("-").map(Number);
@@ -140,7 +133,7 @@ export function allTags(d: DB): string[] {
 export function addItem(
   input: string,
   recurring: boolean,
-  opts: { bucket?: Bucket; scheduledDate?: string | null } = {}
+  opts: { bucket?: Bucket } = {}
 ): string | null {
   const { title, tag } = parseTag(input);
   if (!title) return null;
@@ -149,10 +142,7 @@ export function addItem(
     title,
     tag,
     recurring,
-    // フラグ。予定日つきのときは配置に使わないが一応 someday を入れておく。
     bucket: opts.bucket ?? "someday",
-    // 毎日タスクは予定日を持たない。それ以外は渡された予定日（カレンダー追加など）。
-    scheduledDate: recurring ? null : (opts.scheduledDate ?? null),
     sortOrder: -Date.now(), // 新しいものほど上（昇順で先頭）
     status: "open",
     createdAt: now(),
@@ -171,8 +161,6 @@ export function editItem(itemId: string, input: string, recurring: boolean) {
     it.title = title;
     it.tag = tag;
     it.recurring = recurring;
-    // 毎日タスクは予定日を持たない（不変条件）
-    if (recurring) it.scheduledDate = null;
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);
@@ -262,23 +250,13 @@ export function toggleRecurringToday(itemId: string) {
   }
 }
 
-// --- いつやるか（フラグ bucket ／ 予定日 scheduledDate） ---
+// --- いつやるか（フラグ bucket） ---
 
-/** 表示上のバケット。予定日つきは日付から導出、なければフラグ(bucket)。 */
-export function effectiveBucket(item: Item, date: string = todayStr()): Bucket {
-  if (item.scheduledDate != null) {
-    if (item.scheduledDate <= date) return "today";
-    if (item.scheduledDate === nextDateStr(date)) return "tomorrow";
-    return "soon";
-  }
-  return item.bucket;
-}
-
-/** フラグ(bucket)を変更し、移動先の先頭に出す。毎日タスク・予定日つきは対象外。 */
+/** フラグ(bucket)を変更し、移動先の先頭に出す。毎日タスクは対象外。 */
 export function setBucket(itemId: string, bucket: Bucket) {
   optimistic((d) => {
     const it = d.items.find((x) => x.id === itemId);
-    if (!it || it.recurring || it.scheduledDate != null) return;
+    if (!it || it.recurring) return;
     it.bucket = bucket;
     it.sortOrder = -Date.now(); // 移動先の先頭へ
   });
@@ -303,7 +281,7 @@ export async function promote() {
   }
 
   const weekChanged = crossedWeek(last, today);
-  const isFlag = (i: Item) => !i.recurring && i.scheduledDate == null;
+  const isFlag = (i: Item) => !i.recurring;
   const tomorrowItems = db.items.filter((i) => isFlag(i) && i.bucket === "tomorrow");
   const soonItems = weekChanged ? db.items.filter((i) => isFlag(i) && i.bucket === "soon") : [];
   const changedIds = new Set([...tomorrowItems, ...soonItems].map((i) => i.id));
@@ -351,19 +329,6 @@ export function addToToday(itemId: string) {
 /** ⏳ 今後やるに移動（近日中へ。いつか送りで埋もれさせない） */
 export function moveToFuture(itemId: string) {
   setBucket(itemId, "soon");
-}
-
-/** 予定日を任意の日付に設定（null で未定）。毎日タスクは対象外。 */
-export function setScheduledDate(itemId: string, date: string | null) {
-  optimistic((d) => {
-    const it = d.items.find((x) => x.id === itemId);
-    if (!it || it.recurring) return;
-    it.scheduledDate = date;
-    // 予定日を外したらフラグに戻る。設計どおり戻り先は「いつか」。
-    if (date == null) it.bucket = "someday";
-  });
-  const updated = db.items.find((x) => x.id === itemId);
-  if (updated) void remote.updateItem(updated);
 }
 
 // --- 手順（ステップ） ---
@@ -426,35 +391,6 @@ export function toggleStep(stepId: string) {
   }
 }
 
-// --- 1日のメモ（日付ごとに1つ） ---
-
-export function getDayNote(d: DB, date: string): string {
-  return d.dayNotes.find((n) => n.date === date)?.note ?? "";
-}
-
-export function setDayNote(date: string, note: string) {
-  const trimmed = note.trim();
-  const existing = db.dayNotes.find((n) => n.date === date);
-  if (existing) {
-    if (trimmed) {
-      optimistic((d) => {
-        const n = d.dayNotes.find((x) => x.id === existing.id);
-        if (n) n.note = trimmed;
-      });
-      void remote.updateDayNote({ ...existing, note: trimmed });
-    } else {
-      optimistic((d) => {
-        d.dayNotes = d.dayNotes.filter((x) => x.id !== existing.id);
-      });
-      void remote.deleteDayNote(existing.id);
-    }
-  } else if (trimmed) {
-    const entry: DayNote = { id: uid(), date, note: trimmed };
-    optimistic((d) => d.dayNotes.push(entry));
-    void remote.insertDayNote(entry);
-  }
-}
-
 // --- できたことログ ---
 
 /** その日にできたことを取り出す（新しい順） */
@@ -464,7 +400,7 @@ export function logsForDate(d: DB, date: string): DoneLog[] {
     .sort((a, b) => b.doneAt.localeCompare(a.doneAt));
 }
 
-/** 日付ごとの「できた数」を {date: 件数} の形で返す（カレンダーの印に使う） */
+/** 日付ごとの「できた数」を {date: 件数} の形で返す */
 export function doneCountByDate(d: DB): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const l of d.doneLogs) counts[l.date] = (counts[l.date] ?? 0) + 1;

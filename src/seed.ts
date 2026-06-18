@@ -6,17 +6,8 @@ import { emptyDB, type DB, type Item } from "./types";
 const id = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
-function todayStr(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 export function seedDB(): DB {
   const db: DB = structuredClone(emptyDB);
-  const date = todayStr();
 
   // [タイトル, タグ(無ければ null), 毎日か, 今日に出すか]
   const rows: [string, string | null, boolean, boolean][] = [
@@ -32,7 +23,6 @@ export function seedDB(): DB {
       title,
       tag,
       recurring,
-      scheduledDate: inToday ? date : null, // 今日に出すものは予定日=今日
       bucket: inToday ? "today" : "someday",
       sortOrder: order++,
       status: "open",

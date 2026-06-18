@@ -364,7 +364,7 @@ select {
   margin-right: 6px;
 }
 
-/* カレンダー */
+/* 旧カレンダー由来の月表示スタイル（必要なら後で削除） */
 .cal-head {
   display: flex;
   align-items: center;
@@ -428,6 +428,46 @@ select {
 
 .trow:last-child {
   border-bottom: none;
+}
+
+/* できた帳：日記/帳面風。1日＝1枚の紙（淡い水色・角ばった枠）を、薄い隙間で積む。 */
+.donebook {
+  margin-top: 10px;
+}
+
+.donebook-day {
+  background: #eaf1f7;
+  padding: 10px 14px 4px;
+  margin-bottom: 10px;
+  box-shadow: 0 3px 6px rgba(60, 80, 100, 0.1);
+}
+
+.donebook-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: #5b7d93;
+  margin: 4px 0 8px;
+}
+
+.donebook-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 2px;
+  font-size: 14px;
+  color: #3b4a54;
+  border-bottom: 1px dashed #c2d4e1;
+}
+
+.donebook-entry:last-child {
+  border-bottom: none;
+}
+
+.donebook-time {
+  font-size: 12px;
+  color: #8aa3b4;
+  width: 42px;
+  flex-shrink: 0;
 }
 
 .taskitem {

@@ -14,8 +14,7 @@ export type Bucket = "today" | "tomorrow" | "soon" | "someday";
  * やること。タスクも習慣も買い物も、ぜんぶこれひとつ。
  * - recurring: true なら「毎日くりかえす（習慣）」。今日タブに自動で出る。
  * - tag: 任意で1個だけ。#裁縫 のように書いて付ける。管理画面は持たない。
- * - bucket: ゆるいフラグ（予定日なしのときの配置）。
- * - scheduledDate: 予定日（約束）。あればカレンダー表示＆日付で配置。
+ * - bucket: 「いつやるか」のフラグ。
  * - sortOrder: 手動の並び順（バケット内、小さいほど上）。
  */
 export interface Item {
@@ -24,7 +23,6 @@ export interface Item {
   tag: string | null; // タグは1個だけ。無ければ null。
   recurring: boolean;
   bucket: Bucket;
-  scheduledDate: string | null; // "YYYY-MM-DD"。予定日（約束）。未定なら null。毎日タスクは常に null。
   sortOrder: number;
   status: "open" | "done"; // recurring の場合は使わない（日ごとに doneLogs で管理）
   createdAt: string;
@@ -46,7 +44,7 @@ export interface Step {
 
 /**
  * できたことの記録。
- * title と tag をコピーして持つので、元のアイテムを消してもカレンダーには残り続ける。
+ * title と tag をコピーして持つので、元のアイテムを消してもできた帳には残り続ける。
  */
 export interface DoneLog {
   id: ID;
@@ -58,24 +56,15 @@ export interface DoneLog {
   doneAt: string; // ISO 文字列
 }
 
-/** 1日に1つのメモ（その日の一言） */
-export interface DayNote {
-  id: ID;
-  date: string; // "YYYY-MM-DD"（ユーザーごとに1日1件）
-  note: string;
-}
-
 /** ブラウザに丸ごと保存するデータの全体 */
 export interface DB {
   items: Item[];
   steps: Step[];
   doneLogs: DoneLog[];
-  dayNotes: DayNote[];
 }
 
 export const emptyDB: DB = {
   items: [],
   steps: [],
   doneLogs: [],
-  dayNotes: [],
 };

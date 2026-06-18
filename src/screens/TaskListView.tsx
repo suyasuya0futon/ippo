@@ -5,7 +5,6 @@ import { useState, type ReactNode } from "react";
 import {
   useStore,
   todayStr,
-  effectiveBucket,
   addItem,
   addToToday,
   moveToFuture,
@@ -151,7 +150,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   if (mode === "future") {
     const inBucket = (b: Bucket) =>
       db.items
-        .filter((i) => !i.recurring && i.status === "open" && effectiveBucket(i, date) === b)
+        .filter((i) => !i.recurring && i.status === "open" && i.bucket === b)
         .sort(bySortOrder);
     const tomorrow = inBucket("tomorrow");
     const soon = inBucket("soon");
@@ -209,7 +208,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     .filter(
       (i) =>
         !i.recurring &&
-        effectiveBucket(i, date) === "today" &&
+        i.bucket === "today" &&
         (i.status === "open" || isDoneToday(db, i.id))
     )
     .sort((a, b) => {
@@ -263,7 +262,7 @@ function TaskRow({
   const [stepText, setStepText] = useState("");
 
   const isHabit = item.recurring;
-  const isFlag = !isHabit && item.scheduledDate == null; // 🌱はフラグタスクのみ
+  const isFlag = !isHabit; // 移動ボタン(⏳/🌱)はフラグタスク（＝一度きり）に出す
   const steps = db.steps.filter((s) => s.itemId === item.id).sort((a, b) => a.order - b.order);
   const isDone = isHabit ? Boolean(habitDone) : item.status === "done";
 
