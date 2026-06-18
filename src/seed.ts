@@ -25,6 +25,7 @@ export function seedDB(): DB {
     ["豆腐を買う", "買物", false, true],
   ];
 
+  let order = 0;
   for (const [title, tag, recurring, inToday] of rows) {
     const item: Item = {
       id: id(),
@@ -32,6 +33,8 @@ export function seedDB(): DB {
       tag,
       recurring,
       scheduledDate: inToday ? date : null, // 今日に出すものは予定日=今日
+      bucket: inToday ? "today" : "someday",
+      sortOrder: order++,
       status: "open",
       createdAt: now(),
     };

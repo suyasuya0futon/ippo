@@ -15,7 +15,9 @@ create table if not exists ippo.items (
   title text not null,
   tag text,
   recurring boolean not null default false,
+  bucket text not null default 'someday',
   scheduled_date date,
+  sort_order double precision not null default 0,
   status text not null default 'open',
   created_at timestamptz not null default now(),
   done_at timestamptz
@@ -62,6 +64,12 @@ create table if not exists ippo.day_notes (
   unique (user_id, date)
 );
 
+-- ユーザー設定（フラグの自動繰り上げ判定などに使う。ユーザーごとに1件）
+create table if not exists ippo.user_settings (
+  user_id uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+  last_promote_date date
+);
+
 create index if not exists idx_items_user on ippo.items (user_id);
 create index if not exists idx_steps_item on ippo.steps (item_id);
 create index if not exists idx_today_user_date on ippo.today_items (user_id, date);
@@ -77,6 +85,7 @@ alter table ippo.steps enable row level security;
 alter table ippo.today_items enable row level security;
 alter table ippo.done_logs enable row level security;
 alter table ippo.day_notes enable row level security;
+alter table ippo.user_settings enable row level security;
 
 drop policy if exists "own items" on ippo.items;
 create policy "own items" on ippo.items
@@ -96,4 +105,8 @@ create policy "own logs" on ippo.done_logs
 
 drop policy if exists "own day_notes" on ippo.day_notes;
 create policy "own day_notes" on ippo.day_notes
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own user_settings" on ippo.user_settings;
+create policy "own user_settings" on ippo.user_settings
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

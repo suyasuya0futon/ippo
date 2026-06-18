@@ -7,17 +7,25 @@ export type ID = string;
 /** ログに残せる完了の種類 */
 export type RefType = "item" | "step";
 
+/** ゆるい「いつやるか」フラグ。予定日なしのときの配置に使う。 */
+export type Bucket = "today" | "tomorrow" | "soon" | "someday";
+
 /**
  * やること。タスクも習慣も買い物も、ぜんぶこれひとつ。
  * - recurring: true なら「毎日くりかえす（習慣）」。今日タブに自動で出る。
  * - tag: 任意で1個だけ。#裁縫 のように書いて付ける。管理画面は持たない。
+ * - bucket: ゆるいフラグ（予定日なしのときの配置）。
+ * - scheduledDate: 予定日（約束）。あればカレンダー表示＆日付で配置。
+ * - sortOrder: 手動の並び順（バケット内、小さいほど上）。
  */
 export interface Item {
   id: ID;
   title: string;
   tag: string | null; // タグは1個だけ。無ければ null。
   recurring: boolean;
-  scheduledDate: string | null; // "YYYY-MM-DD"。予定日。未定なら null。毎日タスクは常に null。
+  bucket: Bucket;
+  scheduledDate: string | null; // "YYYY-MM-DD"。予定日（約束）。未定なら null。毎日タスクは常に null。
+  sortOrder: number;
   status: "open" | "done"; // recurring の場合は使わない（日ごとに doneLogs で管理）
   createdAt: string;
   doneAt?: string;

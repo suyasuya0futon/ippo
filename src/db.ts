@@ -8,6 +8,7 @@ import {
   emptyDB,
   type DB,
   type Item,
+  type Bucket,
   type Step,
   type DoneLog,
   type DayNote,
@@ -20,7 +21,9 @@ type ItemRow = {
   title: string;
   tag: string | null;
   recurring: boolean;
+  bucket: Bucket;
   scheduled_date: string | null;
+  sort_order: number;
   status: "open" | "done";
   created_at: string;
   done_at: string | null;
@@ -49,7 +52,9 @@ const toItem = (r: ItemRow): Item => ({
   title: r.title,
   tag: r.tag ?? null,
   recurring: r.recurring,
+  bucket: r.bucket ?? "someday",
   scheduledDate: r.scheduled_date ?? null,
+  sortOrder: r.sort_order ?? 0,
   status: r.status,
   createdAt: r.created_at,
   doneAt: r.done_at ?? undefined,
@@ -80,7 +85,9 @@ const itemRow = (i: Item) => ({
   title: i.title,
   tag: i.tag ?? null,
   recurring: i.recurring,
+  bucket: i.bucket,
   scheduled_date: i.scheduledDate ?? null,
+  sort_order: i.sortOrder,
   status: i.status,
   created_at: i.createdAt,
   done_at: i.doneAt ?? null,

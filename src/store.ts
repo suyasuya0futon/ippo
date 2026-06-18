@@ -130,6 +130,8 @@ export function addItem(
     recurring,
     // 毎日タスクは予定日を持たない。それ以外は渡された予定日（今日やる追加なら今日）。
     scheduledDate: recurring ? null : scheduledDate,
+    bucket: "someday", // ステップ2で配置ロジックと一緒に正しく設定する（今は配置に未使用）
+    sortOrder: -Date.now(), // 新しいものほど上（昇順で先頭）。ステップ2で本採用。
     status: "open",
     createdAt: now(),
   };
