@@ -35,7 +35,7 @@ const bySortOrder = (a: Item, b: Item) => a.sortOrder - b.sortOrder;
 function countLabel(remaining: number, total: number, celebrate: boolean): string {
   if (total === 0) return "";
   if (remaining > 0) return `（${remaining}）`;
-  return celebrate ? " 🎉" : "";
+  return celebrate ? "（完了🎉）" : "";
 }
 
 // セクション見出し。左（タイトル）=開閉スイッチ、右＝追加 ➕。
