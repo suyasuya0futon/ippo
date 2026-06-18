@@ -272,7 +272,7 @@ function TaskRow({
     setStepText("");
   }
 
-  // 編集モード：行全体を入力欄に（種類は変えない＝recurring は保持）
+  // 編集パネル：タイトル編集＋削除（種類は変えない＝recurring は保持。予定日はステップ6）
   if (editing) {
     return (
       <div className="trow" style={{ padding: "8px 4px" }}>
@@ -286,9 +286,21 @@ function TaskRow({
             setEditing(false);
           }}
         />
-        <button className="btn--ghost btn" style={{ marginTop: 6 }} onClick={() => setEditing(false)}>
-          キャンセル
-        </button>
+        <div className="row" style={{ marginTop: 6, justifyContent: "space-between" }}>
+          <button className="btn--ghost btn" onClick={() => setEditing(false)}>
+            キャンセル
+          </button>
+          <button
+            className="btn--ghost btn"
+            style={{ color: "#c97a7a" }}
+            onClick={() => {
+              deleteItem(item.id);
+              setEditing(false);
+            }}
+          >
+            削除
+          </button>
+        </div>
       </div>
     );
   }
@@ -313,7 +325,13 @@ function TaskRow({
             {isDone ? "✓" : ""}
           </button>
         )}
-        <span className={`step__label ${isDone ? "step__label--done" : ""}`} style={{ flex: 1 }}>
+        {/* タイトルをタップで編集パネルを開く */}
+        <span
+          className={`step__label ${isDone ? "step__label--done" : ""}`}
+          style={{ flex: 1, cursor: "pointer" }}
+          title="タップで編集"
+          onClick={() => setEditing(true)}
+        >
           <TagChip tag={item.tag} />
           {item.title}
         </span>
@@ -339,23 +357,18 @@ function TaskRow({
               🌱
             </button>
           )}
-          <button
-            className="icon-btn icon-btn--ghost"
-            title="編集"
-            aria-label="編集"
-            onClick={() => setEditing(true)}
-          >
-            ✏️
-          </button>
-          <button
-            className="icon-btn icon-btn--ghost"
-            style={{ fontSize: 20 }}
-            title="削除"
-            aria-label="削除"
-            onClick={() => deleteItem(item.id)}
-          >
-            ×
-          </button>
+          {/* クイック削除は「完了した一度きりタスク」だけ（誤削除防止／習慣は消さない） */}
+          {!isHabit && isDone && (
+            <button
+              className="icon-btn icon-btn--ghost"
+              style={{ fontSize: 20 }}
+              title="削除"
+              aria-label="削除"
+              onClick={() => deleteItem(item.id)}
+            >
+              ×
+            </button>
+          )}
         </span>
       </div>
 
