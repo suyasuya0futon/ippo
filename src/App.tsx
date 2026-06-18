@@ -83,23 +83,6 @@ export default function App() {
         {tab === "today" && <TodayScreen />}
         {tab === "future" && <TaskListView mode="future" />}
         {tab === "donebook" && <DoneBookScreen />}
-
-        <footer
-          style={{
-            marginTop: 32,
-            paddingTop: 12,
-            borderTop: "1px solid var(--line)",
-            textAlign: "center",
-          }}
-        >
-          <button
-            className="btn--ghost btn"
-            style={{ fontSize: 12 }}
-            onClick={() => supabase.auth.signOut()}
-          >
-            ログアウト
-          </button>
-        </footer>
       </main>
 
       <nav className="tabbar">
