@@ -270,6 +270,40 @@ export function reorderItems(orderedIds: string[]) {
 }
 
 /**
+ * 今日やるタブで、ドラッグして種類を変える（通常タスク ⇄ 毎日の習慣）。
+ * - targetIds: 移動先リストの新しい並び（移ってきた itemId を含む）
+ * - sourceIds: 移動元リストの新しい並び（itemId を除く。穴を残さないよう詰め直す）
+ * どちらも未完了だけが対象（完了は触らない）。確認は出さず、間違えても逆向きドラッグで戻せる。
+ */
+export function convertItemType(
+  itemId: string,
+  toRecurring: boolean,
+  targetIds: string[],
+  sourceIds: string[]
+) {
+  optimistic((d) => {
+    const it = d.items.find((x) => x.id === itemId);
+    if (it) {
+      it.recurring = toRecurring;
+      it.status = "open";
+      delete it.doneAt;
+      // 習慣 → 通常：今日やるに置いて見失わないようにする（習慣は bucket を使わない）
+      if (!toRecurring) it.bucket = "today";
+    }
+    for (const list of [sourceIds, targetIds]) {
+      list.forEach((id, i) => {
+        const t = d.items.find((x) => x.id === id);
+        if (t) t.sortOrder = i;
+      });
+    }
+  });
+  for (const id of [...sourceIds, ...targetIds]) {
+    const t = db.items.find((x) => x.id === id);
+    if (t) void remote.updateItem(t);
+  }
+}
+
+/**
  * ドラッグの結果を反映：orderedIds（移動先バケットの新しい並び）順に sortOrder を 0..N で振り直し、
  * 各アイテムの bucket を指定バケットにする（移動してきたものは bucket も変わる）。
  */

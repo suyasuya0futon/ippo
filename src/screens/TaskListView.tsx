@@ -1,7 +1,7 @@
 // 今日やる / 今後やる の共通ビュー。
 // 配置は bucket（フラグ）／予定日から導出。並びは手動（sortOrder 昇順）。自動ソートしない。
 // 追加は各セクション見出しの ➕ から（押したときだけ入力欄／1件追加で閉じる）。型はセクションで決まる。
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -22,6 +22,7 @@ import {
   moveToFuture,
   reorderBucket,
   reorderItems,
+  convertItemType,
   addStep,
   toggleStep,
   deleteStep,
@@ -357,13 +358,25 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     const overId = String(over.id);
     const from = todayListOf(activeId);
     const to = todayListOf(overId);
-    if (!from || !to || from !== to) return; // 習慣↔タスクの移動はしない
-    const ids = (from === "habit" ? habitsOpen : todayOpen).map((i) => i.id);
-    const oldIndex = ids.indexOf(activeId);
+    if (!from || !to) return;
     const isContainer = overId === "habit" || overId === "task";
-    const newIndex = isContainer ? ids.length - 1 : ids.indexOf(overId);
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
-    reorderItems(arrayMove(ids, oldIndex, newIndex));
+
+    if (from === to) {
+      // 同じリスト内の並べ替え
+      const ids = (from === "habit" ? habitsOpen : todayOpen).map((i) => i.id);
+      const oldIndex = ids.indexOf(activeId);
+      const newIndex = isContainer ? ids.length - 1 : ids.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+      reorderItems(arrayMove(ids, oldIndex, newIndex));
+    } else {
+      // 別リストへ＝種類を変える（通常タスク ⇄ 毎日の習慣）
+      const fromIds = (from === "habit" ? habitsOpen : todayOpen).map((i) => i.id);
+      const toIds = (to === "habit" ? habitsOpen : todayOpen).map((i) => i.id);
+      const insertAt = isContainer ? toIds.length : Math.max(0, toIds.indexOf(overId));
+      const nextSourceIds = fromIds.filter((id) => id !== activeId);
+      const nextTargetIds = [...toIds.slice(0, insertAt), activeId, ...toIds.slice(insertAt)];
+      convertItemType(activeId, to === "habit", nextTargetIds, nextSourceIds);
+    }
   };
 
   const todayDragItem = dragId ? db.items.find((i) => i.id === dragId) : null;
@@ -493,11 +506,28 @@ function TaskRow({
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [stepText, setStepText] = useState("");
+  const editRef = useRef<HTMLDivElement>(null);
 
   const isHabit = item.recurring;
   const isFlag = !isHabit; // 移動ボタン(⏳/🌱)はフラグタスク（＝一度きり）に出す
   const steps = db.steps.filter((s) => s.itemId === item.id).sort((a, b) => a.order - b.order);
   const isDone = isHabit ? Boolean(habitDone) : item.status === "done";
+
+  // 編集中に外側を触ったら、キャンセルを押さなくても編集を解除する（保存はしない）。
+  useEffect(() => {
+    if (!editing) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (editRef.current && !editRef.current.contains(e.target as Node)) {
+        setEditing(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [editing]);
 
   function submitStep() {
     addStep(item.id, stepText);
@@ -507,7 +537,7 @@ function TaskRow({
   // 編集パネル：タイトル編集＋削除（種類は変えない＝recurring は保持。予定日はステップ6）
   if (editing) {
     return (
-      <div className="trow" style={{ padding: "8px 4px" }}>
+      <div className="trow" ref={editRef} style={{ padding: "8px 4px" }}>
         <ItemInput
           initialText={itemToInput(item)}
           showRecurring={false}
@@ -557,12 +587,12 @@ function TaskRow({
             {isDone ? "✓" : ""}
           </button>
         )}
-        {/* タイトルをタップで編集パネルを開く */}
+        {/* タイトルをタップで編集パネルを開く。完了したものは触らない（編集不可）。 */}
         <span
           className={`step__label ${isDone ? "step__label--done" : ""}`}
-          style={{ flex: 1, cursor: "pointer" }}
-          title="タップで編集"
-          onClick={() => setEditing(true)}
+          style={{ flex: 1, cursor: isDone ? "default" : "pointer" }}
+          title={isDone ? undefined : "タップで編集"}
+          onClick={isDone ? undefined : () => setEditing(true)}
         >
           <TagChip tag={item.tag} />
           {item.title}
