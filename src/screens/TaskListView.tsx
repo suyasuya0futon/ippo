@@ -21,6 +21,7 @@ import {
   addToToday,
   moveToFuture,
   reorderBucket,
+  reorderItems,
   addStep,
   toggleStep,
   deleteStep,
@@ -118,27 +119,40 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     onAdd: (input: string) => void,
     emptyText: string,
     habitDoneOf?: (it: Item) => boolean,
-    sortable = false
+    sortable = false,
+    doneItems: Item[] = []
   ) {
     const isCollapsed = collapsed.has(key);
-    const rows =
-      items.length === 0 ? (
-        <div className="empty" style={{ padding: "12px 8px" }}>
-          {emptyText}
-        </div>
-      ) : sortable ? (
-        items.map((it) => <SortableTaskRow key={it.id} item={it} db={db} />)
-      ) : (
-        items.map((it) => (
-          <TaskRow
+    const plainRow = (it: Item) => (
+      <TaskRow
+        key={it.id}
+        item={it}
+        db={db}
+        mode={mode}
+        habitDone={habitDoneOf ? habitDoneOf(it) : undefined}
+      />
+    );
+    const bothEmpty = items.length === 0 && doneItems.length === 0;
+    const rows = bothEmpty ? (
+      <div className="empty" style={{ padding: "12px 8px" }}>
+        {emptyText}
+      </div>
+    ) : sortable ? (
+      <>
+        {items.map((it) => (
+          <SortableTaskRow
             key={it.id}
             item={it}
             db={db}
             mode={mode}
             habitDone={habitDoneOf ? habitDoneOf(it) : undefined}
           />
-        ))
-      );
+        ))}
+        {doneItems.map(plainRow)}
+      </>
+    ) : (
+      items.map(plainRow)
+    );
     return (
       <>
         <SectionHead
@@ -318,29 +332,89 @@ export default function TaskListView({ mode }: { mode: Mode }) {
       return (b.doneAt ?? "").localeCompare(a.doneAt ?? "");
     });
 
-  const habitsRemaining = habits.filter((h) => !isDoneToday(db, h.id)).length;
-  const todayRemaining = todayItems.filter((i) => i.status === "open").length;
+  // 並べ替えできるのは未完了だけ。完了は下に沈めて固定。
+  const habitsOpen = habits.filter((h) => !isDoneToday(db, h.id));
+  const habitsDone = habits.filter((h) => isDoneToday(db, h.id));
+  const todayOpen = todayItems.filter((i) => i.status === "open");
+  const todayDone = todayItems.filter((i) => i.status !== "open");
+
+  const habitsRemaining = habitsOpen.length;
+  const todayRemaining = todayOpen.length;
+
+  // 今日やるタブのドラッグ並べ替え（習慣・タスクそれぞれの未完了リスト内だけ）。
+  const todayListOf = (id: string): "habit" | "task" | null => {
+    if (id === "habit" || id === "task") return id;
+    if (habitsOpen.some((i) => i.id === id)) return "habit";
+    if (todayOpen.some((i) => i.id === id)) return "task";
+    return null;
+  };
+
+  const handleTodayDragEnd = (e: DragEndEvent) => {
+    setDragId(null);
+    const { active, over } = e;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const from = todayListOf(activeId);
+    const to = todayListOf(overId);
+    if (!from || !to || from !== to) return; // 習慣↔タスクの移動はしない
+    const ids = (from === "habit" ? habitsOpen : todayOpen).map((i) => i.id);
+    const oldIndex = ids.indexOf(activeId);
+    const isContainer = overId === "habit" || overId === "task";
+    const newIndex = isContainer ? ids.length - 1 : ids.indexOf(overId);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+    reorderItems(arrayMove(ids, oldIndex, newIndex));
+  };
+
+  const todayDragItem = dragId ? db.items.find((i) => i.id === dragId) : null;
 
   return (
-    <div>
-      {section(
-        "habit",
-        `毎日の習慣${countLabel(habitsRemaining, habits.length, true)}`,
-        habits,
-        "毎日やること（例：プロテイン飲む #からだ）",
-        (input) => addItem(input, true),
-        "習慣はありません。",
-        (it) => isDoneToday(db, it.id)
-      )}
-      {section(
-        "task",
-        `今日のタスク${countLabel(todayRemaining, todayItems.length, true)}`,
-        todayItems,
-        "今日やること（例：薬を飲む #からだ）",
-        (input) => addItem(input, false, { bucket: "today" }),
-        "今日やることは、まだありません。右上の ➕ で追加できます。"
-      )}
-    </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={(e) => setDragId(String(e.active.id))}
+      onDragEnd={handleTodayDragEnd}
+      onDragCancel={() => setDragId(null)}
+    >
+      <div>
+        {section(
+          "habit",
+          `毎日の習慣${countLabel(habitsRemaining, habits.length, true)}`,
+          habitsOpen,
+          "毎日やること（例：プロテイン飲む #からだ）",
+          (input) => addItem(input, true),
+          "習慣はありません。",
+          (it) => isDoneToday(db, it.id),
+          true,
+          habitsDone
+        )}
+        {section(
+          "task",
+          `今日のタスク${countLabel(todayRemaining, todayItems.length, true)}`,
+          todayOpen,
+          "今日やること（例：薬を飲む #からだ）",
+          (input) => addItem(input, false, { bucket: "today" }),
+          "今日やることは、まだありません。右上の ➕ で追加できます。",
+          undefined,
+          true,
+          todayDone
+        )}
+      </div>
+      <DragOverlay>
+        {todayDragItem ? (
+          <div className="card" style={{ margin: 0, opacity: 0.95 }}>
+            <div className="trow">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px" }}>
+                <span className="step__label" style={{ flex: 1 }}>
+                  <TagChip tag={todayDragItem.tag} />
+                  {todayDragItem.title}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -358,8 +432,18 @@ function DroppableBucket({ id, children }: { id: string; children: ReactNode }) 
   );
 }
 
-// 今後やるの行。ドラッグは専用ハンドル(≡)だけ。行本体は普通にスクロールできる。
-function SortableTaskRow({ item, db }: { item: Item; db: DB }) {
+// ドラッグ可能な行。ドラッグは専用ハンドル(≡)だけ。行本体は普通にスクロールできる。
+function SortableTaskRow({
+  item,
+  db,
+  mode,
+  habitDone,
+}: {
+  item: Item;
+  db: DB;
+  mode: Mode;
+  habitDone?: boolean;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });
@@ -387,7 +471,7 @@ function SortableTaskRow({ item, db }: { item: Item; db: DB }) {
         opacity: isDragging ? 0.4 : 1,
       }}
     >
-      <TaskRow item={item} db={db} mode="future" dragHandle={handle} />
+      <TaskRow item={item} db={db} mode={mode} habitDone={habitDone} dragHandle={handle} />
     </div>
   );
 }
