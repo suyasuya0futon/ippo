@@ -71,13 +71,23 @@ function TrashIcon() {
   );
 }
 
-function CheckIcon() {
+// 追加トグル。閉じてるとき＋／開いてるとき×。同寸・同色のSVGで位置と見た目を揃える。
+function PlusIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" {...svgBase} strokeWidth={2.5}>
-      <path d="M20 6 9 17l-5-5" />
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }
+
+function CloseIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
 
 type Mode = "today" | "future";
 
@@ -117,8 +127,13 @@ function SectionHead({
         <span className="section-head__caret">{collapsed ? "▸" : "▾"}</span>
         {children}
       </button>
-      <button className="add-btn" aria-label={addOpen ? "閉じる" : "追加"} onClick={onToggleAdd}>
-        {addOpen ? "✕" : "➕"}
+      <button
+        className="add-btn"
+        style={{ color: "var(--accent)", display: "inline-flex", alignItems: "center" }}
+        aria-label={addOpen ? "閉じる" : "追加"}
+        onClick={onToggleAdd}
+      >
+        {addOpen ? <CloseIcon /> : <PlusIcon />}
       </button>
     </div>
   );
@@ -579,8 +594,6 @@ function TaskRow({
           initialText={itemToInput(item)}
           showRecurring={false}
           compact
-          submitLabel={<CheckIcon />}
-          submitClassName="icon-btn icon-btn--accent"
           leftAdornment={
             <button
               className="icon-btn icon-btn--ghost"

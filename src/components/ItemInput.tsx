@@ -4,6 +4,25 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useStore, allTags } from "../store";
 
+// 送信ボタンの既定アイコン（✓）。追加・編集ともこの確定ボタンを使う。
+function CheckIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 type Props = {
   onSubmit: (input: string, recurring: boolean) => void;
   initialText?: string;
@@ -22,8 +41,8 @@ export default function ItemInput({
   initialText = "",
   initialRecurring = false,
   placeholder = "例：ジムに行く #健康",
-  submitLabel = "＋",
-  submitClassName = "btn",
+  submitLabel = <CheckIcon />,
+  submitClassName = "icon-btn icon-btn--accent",
   leftAdornment,
   compact = false,
   showRecurring = true,
