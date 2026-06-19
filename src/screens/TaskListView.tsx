@@ -3,11 +3,24 @@
 // 追加は各セクション見出しの ➕ から（押したときだけ入力欄／1件追加で閉じる）。型はセクションで決まる。
 import { useState, type ReactNode } from "react";
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  closestCorners,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   useStore,
   todayStr,
   addItem,
   addToToday,
   moveToFuture,
+  reorderBucket,
   addStep,
   toggleStep,
   deleteStep,
@@ -22,6 +35,9 @@ import {
 import type { Bucket, DB, Item } from "../types";
 import { TagChip } from "../components/TagChip";
 import ItemInput from "../components/ItemInput";
+
+const FUTURE_BUCKETS = ["tomorrow", "soon", "someday"] as const;
+type FutureBucket = (typeof FUTURE_BUCKETS)[number];
 
 type Mode = "today" | "future";
 
@@ -73,6 +89,12 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   const [addOpen, setAddOpen] = useState<string | null>(null);
   // 畳まれているセクション（既定は全部開く。リロードで戻る＝覚えない）
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // ドラッグ中のアイテムID（今後やるのみ）
+  const [dragId, setDragId] = useState<string | null>(null);
+  // ドラッグは専用ハンドル(≡)からのみ。少し動かしたら開始（タップでは始まらない）。
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   const date = todayStr();
 
@@ -87,7 +109,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   // ➕ は新規追加だけ。アコーディオン開閉とは無関係（閉じたままでも入力欄を出して追加できる）。
   const toggleAdd = (key: string) => setAddOpen((cur) => (cur === key ? null : key));
 
-  // セクション（見出し＋追加欄＋リスト）を1つ描く
+  // セクション（見出し＋追加欄＋リスト）を1つ描く。sortable=true でドラッグ並べ替え対応。
   function section(
     key: Bucket | "habit" | "task",
     title: ReactNode,
@@ -95,9 +117,28 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     placeholder: string,
     onAdd: (input: string) => void,
     emptyText: string,
-    habitDoneOf?: (it: Item) => boolean
+    habitDoneOf?: (it: Item) => boolean,
+    sortable = false
   ) {
     const isCollapsed = collapsed.has(key);
+    const rows =
+      items.length === 0 ? (
+        <div className="empty" style={{ padding: "12px 8px" }}>
+          {emptyText}
+        </div>
+      ) : sortable ? (
+        items.map((it) => <SortableTaskRow key={it.id} item={it} db={db} />)
+      ) : (
+        items.map((it) => (
+          <TaskRow
+            key={it.id}
+            item={it}
+            db={db}
+            mode={mode}
+            habitDone={habitDoneOf ? habitDoneOf(it) : undefined}
+          />
+        ))
+      );
     return (
       <>
         <SectionHead
@@ -123,66 +164,124 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           </div>
         )}
         {/* リストは畳める */}
-        {!isCollapsed && (
-          <div className="card">
-            {items.length === 0 ? (
-              <div className="empty" style={{ padding: "12px 8px" }}>
-                {emptyText}
-              </div>
-            ) : (
-              items.map((it) => (
-                <TaskRow
-                  key={it.id}
-                  item={it}
-                  db={db}
-                  mode={mode}
-                  habitDone={habitDoneOf ? habitDoneOf(it) : undefined}
-                />
-              ))
-            )}
-          </div>
-        )}
+        {!isCollapsed &&
+          (sortable ? (
+            <DroppableBucket id={key}>
+              <SortableContext
+                items={items.map((i) => i.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {rows}
+              </SortableContext>
+            </DroppableBucket>
+          ) : (
+            <div className="card">{rows}</div>
+          ))}
       </>
     );
   }
 
-  // ===== 今後やる =====
+  // ===== 今後やる（ドラッグで並べ替え＆バケット間移動） =====
   if (mode === "future") {
     const inBucket = (b: Bucket) =>
       db.items
         .filter((i) => !i.recurring && i.status === "open" && i.bucket === b)
         .sort(bySortOrder);
-    const tomorrow = inBucket("tomorrow");
-    const soon = inBucket("soon");
-    const someday = inBucket("someday");
+    const lists: Record<FutureBucket, Item[]> = {
+      tomorrow: inBucket("tomorrow"),
+      soon: inBucket("soon"),
+      someday: inBucket("someday"),
+    };
+
+    const containerOf = (id: string): FutureBucket | null => {
+      if ((FUTURE_BUCKETS as readonly string[]).includes(id)) return id as FutureBucket;
+      for (const b of FUTURE_BUCKETS) if (lists[b].some((i) => i.id === id)) return b;
+      return null;
+    };
+
+    const handleDragEnd = (e: DragEndEvent) => {
+      setDragId(null);
+      const { active, over } = e;
+      if (!over) return;
+      const activeId = String(active.id);
+      const overId = String(over.id);
+      const from = containerOf(activeId);
+      const to = containerOf(overId);
+      if (!from || !to) return;
+      const fromIds = lists[from].map((i) => i.id);
+      const toIds = lists[to].map((i) => i.id);
+      if (from === to) {
+        const oldIndex = fromIds.indexOf(activeId);
+        const newIndex = overId === to ? fromIds.length - 1 : fromIds.indexOf(overId);
+        if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+        reorderBucket(arrayMove(fromIds, oldIndex, newIndex), to);
+      } else {
+        const insertAt = overId === to ? toIds.length : Math.max(0, toIds.indexOf(overId));
+        const nextFromIds = fromIds.filter((id) => id !== activeId);
+        const nextToIds = [...toIds.slice(0, insertAt), activeId, ...toIds.slice(insertAt)];
+        // 移動元・移動先の両方を 0..N に詰め直す（移動元に穴を残さない）
+        reorderBucket(nextFromIds, from);
+        reorderBucket(nextToIds, to);
+      }
+    };
+
+    const dragItem = dragId ? db.items.find((i) => i.id === dragId) : null;
 
     return (
-      <div>
-        {section(
-          "tomorrow",
-          `明日${countLabel(tomorrow.length, tomorrow.length, false)}`,
-          tomorrow,
-          "明日やること（例：銀行に行く）",
-          (input) => addItem(input, false, { bucket: "tomorrow" }),
-          "明日のタスクはありません。"
-        )}
-        {section(
-          "soon",
-          `近日中${countLabel(soon.length, soon.length, false)}`,
-          soon,
-          "近日中にやること（例：本を返す）",
-          (input) => addItem(input, false, { bucket: "soon" }),
-          "近日中のタスクはありません。"
-        )}
-        {section(
-          "someday",
-          `いつか${countLabel(someday.length, someday.length, false)}`,
-          someday,
-          "いつかやること（例：服を処分する #家事）",
-          (input) => addItem(input, false, { bucket: "someday" }),
-          "いつかのタスクはありません。"
-        )}
-      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={(e) => setDragId(String(e.active.id))}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setDragId(null)}
+      >
+        <div>
+          {section(
+            "tomorrow",
+            `明日${countLabel(lists.tomorrow.length, lists.tomorrow.length, false)}`,
+            lists.tomorrow,
+            "明日やること（例：銀行に行く）",
+            (input) => addItem(input, false, { bucket: "tomorrow" }),
+            "明日のタスクはありません。",
+            undefined,
+            true
+          )}
+          {section(
+            "soon",
+            `近日中${countLabel(lists.soon.length, lists.soon.length, false)}`,
+            lists.soon,
+            "近日中にやること（例：本を返す）",
+            (input) => addItem(input, false, { bucket: "soon" }),
+            "近日中のタスクはありません。",
+            undefined,
+            true
+          )}
+          {section(
+            "someday",
+            `いつか${countLabel(lists.someday.length, lists.someday.length, false)}`,
+            lists.someday,
+            "いつかやること（例：服を処分する #家事）",
+            (input) => addItem(input, false, { bucket: "someday" }),
+            "いつかのタスクはありません。",
+            undefined,
+            true
+          )}
+        </div>
+        <DragOverlay>
+          {dragItem ? (
+            <div className="card" style={{ margin: 0, opacity: 0.95 }}>
+              <div className="trow">
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px" }}>
+                  <span className="step__label" style={{ flex: 1 }}>
+                    <TagChip tag={dragItem.tag} />
+                    {dragItem.title}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     );
   }
 
@@ -245,17 +344,67 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   );
 }
 
+// 今後やるのバケット（カード）。空でもドロップ先になれるよう droppable にする。
+function DroppableBucket({ id, children }: { id: string; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className="card"
+      style={isOver ? { outline: "2px dashed var(--accent)", outlineOffset: -2 } : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
+// 今後やるの行。ドラッグは専用ハンドル(≡)だけ。行本体は普通にスクロールできる。
+function SortableTaskRow({ item, db }: { item: Item; db: DB }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
+  const handle = (
+    <button
+      className="icon-btn icon-btn--ghost"
+      style={{ cursor: "grab", touchAction: "none" }}
+      aria-label="ドラッグして並べ替え"
+      {...attributes}
+      {...listeners}
+    >
+      <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true">
+        <line x1="1" y1="2" x2="17" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <line x1="1" y1="7" x2="17" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <line x1="1" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+      }}
+    >
+      <TaskRow item={item} db={db} mode="future" dragHandle={handle} />
+    </div>
+  );
+}
+
 // habitDone は毎日の習慣行のときだけ渡す（その日の完了状態）
 function TaskRow({
   item,
   db,
   mode,
   habitDone,
+  dragHandle,
 }: {
   item: Item;
   db: DB;
   mode: Mode;
   habitDone?: boolean;
+  dragHandle?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -368,6 +517,8 @@ function TaskRow({
               ×
             </button>
           )}
+          {/* ドラッグ専用ハンドルは右端に */}
+          {dragHandle}
         </span>
       </div>
 

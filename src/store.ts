@@ -252,6 +252,26 @@ export function toggleRecurringToday(itemId: string) {
 
 // --- いつやるか（フラグ bucket） ---
 
+/**
+ * ドラッグの結果を反映：orderedIds（移動先バケットの新しい並び）順に sortOrder を 0..N で振り直し、
+ * 各アイテムの bucket を指定バケットにする（移動してきたものは bucket も変わる）。
+ */
+export function reorderBucket(orderedIds: string[], bucket: Bucket) {
+  optimistic((d) => {
+    orderedIds.forEach((id, i) => {
+      const it = d.items.find((x) => x.id === id);
+      if (it && !it.recurring) {
+        it.bucket = bucket;
+        it.sortOrder = i;
+      }
+    });
+  });
+  for (const id of orderedIds) {
+    const it = db.items.find((x) => x.id === id);
+    if (it) void remote.updateItem(it);
+  }
+}
+
 /** フラグ(bucket)を変更し、移動先の先頭に出す。毎日タスクは対象外。 */
 export function setBucket(itemId: string, bucket: Bucket) {
   optimistic((d) => {
