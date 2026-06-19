@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -93,9 +94,12 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   // ドラッグ中のアイテムID（今後やるのみ）
   const [dragId, setDragId] = useState<string | null>(null);
-  // ドラッグは専用ハンドル(≡)からのみ。少し動かしたら開始（タップでは始まらない）。
+  // ドラッグは行本体（タグ＋文字）を掴んで開始。
+  // PC: マウスを少し動かしたら開始（クリックでは始まらない）。
+  // スマホ: ちょい押し（溜め）してから開始。サッと縦スワイプはスクロールに渡す。
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
   );
 
   const date = todayStr();
@@ -445,7 +449,7 @@ function DroppableBucket({ id, children }: { id: string; children: ReactNode }) 
   );
 }
 
-// ドラッグ可能な行。ドラッグは専用ハンドル(≡)だけ。行本体は普通にスクロールできる。
+// ドラッグ可能な行。掴むのは行本体（タグ＋文字）。編集は 📝 ボタンに分けた。
 function SortableTaskRow({
   item,
   db,
@@ -460,21 +464,6 @@ function SortableTaskRow({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });
-  const handle = (
-    <button
-      className="icon-btn icon-btn--ghost"
-      style={{ cursor: "grab", touchAction: "none" }}
-      aria-label="ドラッグして並べ替え"
-      {...attributes}
-      {...listeners}
-    >
-      <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true">
-        <line x1="1" y1="2" x2="17" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <line x1="1" y1="7" x2="17" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <line x1="1" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    </button>
-  );
   return (
     <div
       ref={setNodeRef}
@@ -484,24 +473,31 @@ function SortableTaskRow({
         opacity: isDragging ? 0.4 : 1,
       }}
     >
-      <TaskRow item={item} db={db} mode={mode} habitDone={habitDone} dragHandle={handle} />
+      <TaskRow
+        item={item}
+        db={db}
+        mode={mode}
+        habitDone={habitDone}
+        dragProps={{ ...attributes, ...listeners }}
+      />
     </div>
   );
 }
 
 // habitDone は毎日の習慣行のときだけ渡す（その日の完了状態）
+// dragProps は並べ替え対象（未完了）の行だけに渡す。行本体に付けて「掴んで移動」にする。
 function TaskRow({
   item,
   db,
   mode,
   habitDone,
-  dragHandle,
+  dragProps,
 }: {
   item: Item;
   db: DB;
   mode: Mode;
   habitDone?: boolean;
-  dragHandle?: ReactNode;
+  dragProps?: Record<string, unknown>;
 }) {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -587,17 +583,29 @@ function TaskRow({
             {isDone ? "✓" : ""}
           </button>
         )}
-        {/* タイトルをタップで編集パネルを開く。完了したものは触らない（編集不可）。 */}
+        {/* 行本体（タグ＋文字）を掴んで移動。編集は右の 📝 から。完了したものは掴めない。 */}
         <span
           className={`step__label ${isDone ? "step__label--done" : ""}`}
-          style={{ flex: 1, cursor: isDone ? "default" : "pointer" }}
-          title={isDone ? undefined : "タップで編集"}
-          onClick={isDone ? undefined : () => setEditing(true)}
+          style={{ flex: 1, cursor: dragProps ? "grab" : "default" }}
+          title={dragProps ? "ドラッグして移動" : undefined}
+          {...(dragProps ?? {})}
         >
           <TagChip tag={item.tag} />
           {item.title}
         </span>
         <span className="icon-actions">
+          {/* 編集（📝）。完了したものは触らない（編集不可）。 */}
+          {!isDone && (
+            <button
+              className="icon-btn icon-btn--ghost"
+              style={{ fontSize: 18 }}
+              title="編集"
+              aria-label="編集"
+              onClick={() => setEditing(true)}
+            >
+              📝
+            </button>
+          )}
           {/* フラグタスクのみ。今日やる＝⏳今後やるへ（近日中）／今後やる＝🌱今日やるに */}
           {mode === "today" && isFlag && !isDone && (
             <button
@@ -631,8 +639,6 @@ function TaskRow({
               ×
             </button>
           )}
-          {/* ドラッグ専用ハンドルは右端に */}
-          {dragHandle}
         </span>
       </div>
 
