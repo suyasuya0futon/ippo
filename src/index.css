@@ -248,6 +248,13 @@ button {
   border-color: var(--accent);
 }
 
+/* 保存（✓）など、主アクションのアイコンボタン */
+.icon-btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .icon-btn--ghost {
   background: transparent;
   border-color: transparent;

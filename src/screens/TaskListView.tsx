@@ -1,7 +1,7 @@
 // 今日やる / 今後やる の共通ビュー。
 // 配置は bucket（フラグ）／予定日から導出。並びは手動（sortOrder 昇順）。自動ソートしない。
 // 追加は各セクション見出しの ➕ から（押したときだけ入力欄／1件追加で閉じる）。型はセクションで決まる。
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -41,6 +41,43 @@ import ItemInput from "../components/ItemInput";
 
 const FUTURE_BUCKETS = ["tomorrow", "soon", "someday"] as const;
 type FutureBucket = (typeof FUTURE_BUCKETS)[number];
+
+// 絵文字ではなく自作SVG（向きが端末で反転しない・色も揃う）。currentColor を継ぐ。
+const svgBase = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+} as const;
+
+function EditIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" {...svgBase} strokeWidth={2.5}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
 
 type Mode = "today" | "future";
 
@@ -449,7 +486,9 @@ function DroppableBucket({ id, children }: { id: string; children: ReactNode }) 
   );
 }
 
-// ドラッグ可能な行。掴むのは行本体（タグ＋文字）。編集は 📝 ボタンに分けた。
+// ドラッグ可能な行。掴むのは行本体（タグ＋文字）。編集は鉛筆に分けた。
+// wrapper では包まず、ref/transform を TaskRow の .trow 自身に渡す
+// （包むと .trow が常に :last-child になり、完了行と区切り線・高さが食い違うため）。
 function SortableTaskRow({
   item,
   db,
@@ -465,22 +504,19 @@ function SortableTaskRow({
     id: item.id,
   });
   return (
-    <div
-      ref={setNodeRef}
-      style={{
+    <TaskRow
+      item={item}
+      db={db}
+      mode={mode}
+      habitDone={habitDone}
+      dragRef={setNodeRef}
+      dragStyle={{
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.4 : 1,
       }}
-    >
-      <TaskRow
-        item={item}
-        db={db}
-        mode={mode}
-        habitDone={habitDone}
-        dragProps={{ ...attributes, ...listeners }}
-      />
-    </div>
+      dragProps={{ ...attributes, ...listeners }}
+    />
   );
 }
 
@@ -491,12 +527,16 @@ function TaskRow({
   db,
   mode,
   habitDone,
+  dragRef,
+  dragStyle,
   dragProps,
 }: {
   item: Item;
   db: DB;
   mode: Mode;
   habitDone?: boolean;
+  dragRef?: (el: HTMLElement | null) => void;
+  dragStyle?: CSSProperties;
   dragProps?: Record<string, unknown>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -530,43 +570,47 @@ function TaskRow({
     setStepText("");
   }
 
-  // 編集パネル：タイトル編集＋削除（種類は変えない＝recurring は保持。予定日はステップ6）
+  // 編集パネル：1行（🗑左・入力中央・✓右）。キャンセルは外タップで解除。種類は保持。
+  // padding は通常行（11px 4px）と揃えて、編集を開いても高さがガタつかないようにする。
   if (editing) {
     return (
-      <div className="trow" ref={editRef} style={{ padding: "8px 4px" }}>
+      <div className="trow" ref={editRef} style={{ padding: "11px 4px" }}>
         <ItemInput
           initialText={itemToInput(item)}
           showRecurring={false}
-          submitLabel="保存"
+          compact
+          submitLabel={<CheckIcon />}
+          submitClassName="icon-btn icon-btn--accent"
+          leftAdornment={
+            <button
+              className="icon-btn icon-btn--ghost"
+              // チェックボックス(○ 24px)と同じ幅にして、中心と入力欄の左端を揃える
+              style={{ color: "#c97a7a", width: 24, height: 24 }}
+              title="削除"
+              aria-label="削除"
+              onClick={() => {
+                deleteItem(item.id);
+                setEditing(false);
+              }}
+            >
+              <TrashIcon />
+            </button>
+          }
           autoFocus
           onSubmit={(input) => {
             editItem(item.id, input, item.recurring);
             setEditing(false);
           }}
         />
-        <div className="row" style={{ marginTop: 6, justifyContent: "space-between" }}>
-          <button className="btn--ghost btn" onClick={() => setEditing(false)}>
-            キャンセル
-          </button>
-          <button
-            className="btn--ghost btn"
-            style={{ color: "#c97a7a" }}
-            onClick={() => {
-              deleteItem(item.id);
-              setEditing(false);
-            }}
-          >
-            削除
-          </button>
-        </div>
       </div>
     );
   }
 
   return (
-    <div className="trow">
-      {/* 本体の行 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px" }}>
+    <div className="trow" ref={dragRef} style={dragStyle}>
+      {/* 本体の行。box-sizing:border-box なので min-height は padding 込み。
+          未完了行（アイコンボタン34 + 上下padding22 = 56）に合わせて、完了行も同じ高さに揃える。 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px", minHeight: 56 }}>
         {/* 今日やる（習慣含む）はチェックで完了。今後やるは完了させない。 */}
         {mode === "today" && (
           <button
@@ -583,7 +627,7 @@ function TaskRow({
             {isDone ? "✓" : ""}
           </button>
         )}
-        {/* 行本体（タグ＋文字）を掴んで移動。編集は右の 📝 から。完了したものは掴めない。 */}
+        {/* 行本体（タグ＋文字）を掴んで移動。編集は右の鉛筆から。完了したものは掴めない。 */}
         <span
           className={`step__label ${isDone ? "step__label--done" : ""}`}
           style={{ flex: 1, cursor: dragProps ? "grab" : "default" }}
@@ -594,16 +638,15 @@ function TaskRow({
           {item.title}
         </span>
         <span className="icon-actions">
-          {/* 編集（📝）。完了したものは触らない（編集不可）。 */}
+          {/* 編集（鉛筆）。完了したものは触らない（編集不可）。 */}
           {!isDone && (
             <button
               className="icon-btn icon-btn--ghost"
-              style={{ fontSize: 18 }}
               title="編集"
               aria-label="編集"
               onClick={() => setEditing(true)}
             >
-              📝
+              <EditIcon />
             </button>
           )}
           {/* フラグタスクのみ。今日やる＝⏳今後やるへ（近日中）／今後やる＝🌱今日やるに */}
@@ -627,18 +670,7 @@ function TaskRow({
               🌱
             </button>
           )}
-          {/* クイック削除は「完了した一度きりタスク」だけ（誤削除防止／習慣は消さない） */}
-          {!isHabit && isDone && (
-            <button
-              className="icon-btn icon-btn--ghost"
-              style={{ fontSize: 20 }}
-              title="削除"
-              aria-label="削除"
-              onClick={() => deleteItem(item.id)}
-            >
-              ×
-            </button>
-          )}
+          {/* 完了したものは触らない（×は出さない）。消すときはチェックを外して未完了に戻し、編集→🗑。 */}
         </span>
       </div>
 

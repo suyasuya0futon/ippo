@@ -1,7 +1,7 @@
 // アイテムの入力欄。
 // 文中に #タグ と書くとタグになる。# を打つと既存タグの候補が出る。
 // 「毎日」トグルで習慣にできる。追加にも編集にも使う。
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useStore, allTags } from "../store";
 
 type Props = {
@@ -9,7 +9,10 @@ type Props = {
   initialText?: string;
   initialRecurring?: boolean;
   placeholder?: string;
-  submitLabel?: string;
+  submitLabel?: ReactNode;
+  submitClassName?: string;
+  leftAdornment?: ReactNode; // 入力欄の左に置く要素（編集時のゴミ箱など）
+  compact?: boolean; // 入力欄を行と同じ高さに詰める（編集パネル用）
   showRecurring?: boolean;
   autoFocus?: boolean;
 };
@@ -20,6 +23,9 @@ export default function ItemInput({
   initialRecurring = false,
   placeholder = "例：ジムに行く #健康",
   submitLabel = "＋",
+  submitClassName = "btn",
+  leftAdornment,
+  compact = false,
   showRecurring = true,
   autoFocus = false,
 }: Props) {
@@ -53,18 +59,20 @@ export default function ItemInput({
   return (
     <div>
       <div className="row">
+        {leftAdornment}
         <input
           ref={inputRef}
           type="text"
           placeholder={placeholder}
           value={text}
           autoFocus={autoFocus}
+          style={{ minWidth: 0, ...(compact ? { height: 34, paddingTop: 0, paddingBottom: 0 } : null) }}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") submit();
           }}
         />
-        <button className="btn" style={{ flexShrink: 0 }} onClick={submit}>
+        <button className={submitClassName} style={{ flexShrink: 0 }} onClick={submit}>
           {submitLabel}
         </button>
       </div>
