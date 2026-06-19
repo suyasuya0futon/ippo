@@ -115,6 +115,10 @@ body::-webkit-scrollbar {
 .tabbar__icon {
   font-size: 20px;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
 }
 
 /* 共通の部品 */

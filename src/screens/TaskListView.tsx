@@ -88,6 +88,27 @@ function CloseIcon() {
   );
 }
 
+// 行の移動ボタン。行先タブと同じ絵柄にして意味を揃える（今日やる=双葉／今後やる=時計）。
+function SproutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <path d="M7 20h10" />
+      <path d="M10 20c5.5-2.5.8-6.4 3-10" />
+      <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
+      <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
+
 
 type Mode = "today" | "future";
 
@@ -670,7 +691,7 @@ function TaskRow({
               aria-label="今後やるに移動"
               onClick={() => moveToFuture(item.id)}
             >
-              ⏳
+              <ClockIcon />
             </button>
           )}
           {mode === "future" && isFlag && (
@@ -680,7 +701,7 @@ function TaskRow({
               aria-label="今日やるにする"
               onClick={() => addToToday(item.id)}
             >
-              🌱
+              <SproutIcon />
             </button>
           )}
           {/* 完了したものは触らない（×は出さない）。消すときはチェックを外して未完了に戻し、編集→🗑。 */}
