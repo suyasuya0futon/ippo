@@ -32,6 +32,7 @@ type Props = {
   submitClassName?: string;
   leftAdornment?: ReactNode; // 入力欄の左に置く要素（編集時のゴミ箱など）
   compact?: boolean; // 入力欄を行と同じ高さに詰める（編集パネル用）
+  alwaysShowTags?: boolean; // 入力に関係なく既存タグを最初から出す（追加時）
   showRecurring?: boolean;
   autoFocus?: boolean;
 };
@@ -45,6 +46,7 @@ export default function ItemInput({
   submitClassName = "icon-btn icon-btn--accent",
   leftAdornment,
   compact = false,
+  alwaysShowTags = false,
   showRecurring = true,
   autoFocus = false,
 }: Props) {
@@ -53,18 +55,24 @@ export default function ItemInput({
   const [recurring, setRecurring] = useState(initialRecurring);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // いま入力中の末尾が "#部分文字列" なら、その続きのタグ候補を出す
+  // 末尾で "#部分文字列" を入力中なら、それで絞り込む。
+  // そうでなくても alwaysShowTags なら既存タグを全部出す（スマホで # を打たずにタップで付けられる）。
   const match = text.match(/[#＃]([^\s#＃]*)$/);
   const partial = match ? match[1] : null;
   const suggestions =
     partial !== null
-      ? allTags(db)
-          .filter((t) => t.startsWith(partial) && t !== partial)
-          .slice(0, 8)
-      : [];
+      ? allTags(db).filter((t) => t.startsWith(partial) && t !== partial)
+      : alwaysShowTags
+        ? allTags(db)
+        : [];
 
+  // タグは1個だけ。タップしたら既存の #タグ を消して、選んだものに置き換える。
   function pickTag(tag: string) {
-    setText(text.replace(/[#＃][^\s#＃]*$/, `#${tag} `));
+    const base = text
+      .replace(/[#＃][^\s#＃]*/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    setText(base ? `${base} #${tag} ` : `#${tag} `);
     inputRef.current?.focus();
   }
 

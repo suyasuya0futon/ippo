@@ -246,6 +246,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           <div className="card">
             <ItemInput
               showRecurring={false}
+              alwaysShowTags
               autoFocus
               placeholder={placeholder}
               onSubmit={(input) => {
