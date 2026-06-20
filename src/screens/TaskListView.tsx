@@ -646,22 +646,20 @@ function TaskRow({
       {/* 本体の行。box-sizing:border-box なので min-height は padding 込み。
           未完了行（アイコンボタン34 + 上下padding22 = 56）に合わせて、完了行も同じ高さに揃える。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px", minHeight: 56 }}>
-        {/* 今日やる（習慣含む）はチェックで完了。今後やるは完了させない。 */}
-        {mode === "today" && (
-          <button
-            className={`step__check ${isDone ? "step__check--done" : ""}`}
-            onClick={() =>
-              isHabit
-                ? toggleRecurringToday(item.id)
-                : isDone
-                  ? reopenItem(item.id)
-                  : completeItem(item.id)
-            }
-            aria-label={isDone ? "完了を取り消す" : "完了にする"}
-          >
-            {isDone ? "✓" : ""}
-          </button>
-        )}
+        {/* チェックで完了。今後やるから完了すると、今日やるの完了済みに移る（completeItem が bucket を today に）。 */}
+        <button
+          className={`step__check ${isDone ? "step__check--done" : ""}`}
+          onClick={() =>
+            isHabit
+              ? toggleRecurringToday(item.id)
+              : isDone
+                ? reopenItem(item.id)
+                : completeItem(item.id)
+          }
+          aria-label={isDone ? "完了を取り消す" : "完了にする"}
+        >
+          {isDone ? "✓" : ""}
+        </button>
         {/* 行本体（タグ＋文字）を掴んで移動。編集は右の鉛筆から。完了したものは掴めない。 */}
         <span
           className={`step__label ${isDone ? "step__label--done" : ""}`}

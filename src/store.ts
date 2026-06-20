@@ -194,6 +194,8 @@ export function completeItem(itemId: string) {
     if (!it) return;
     it.status = "done";
     it.doneAt = doneAt;
+    // 完了＝「今日やった」。今後やるから完了した場合も、今日やるの完了済みに集める。
+    it.bucket = "today";
     d.doneLogs.push(log);
   });
   const updated = db.items.find((x) => x.id === itemId);
