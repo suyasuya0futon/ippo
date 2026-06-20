@@ -397,9 +397,9 @@ export function addToToday(itemId: string) {
   setBucket(itemId, "today");
 }
 
-/** ⏳ 今後やるに移動（近日中へ。いつか送りで埋もれさせない） */
+/** ⏳ 今後やるに移動（明日へ。今日やらない分は、まず翌日に送る感覚） */
 export function moveToFuture(itemId: string) {
-  setBucket(itemId, "soon");
+  setBucket(itemId, "tomorrow");
 }
 
 // --- 手順（ステップ） ---
