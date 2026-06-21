@@ -423,45 +423,22 @@ export function deleteStep(stepId: string) {
   void remote.deleteStepRow(stepId);
 }
 
+// 手順の✓は done フラグだけを更新する（できた帳には載せない＝親タスクを遂行するための足場なので）。
+// チェック状態は steps テーブルに保存されるので、できた帳ログは作らない。
 export function toggleStep(stepId: string) {
   const s = db.steps.find((x) => x.id === stepId);
   if (!s) return;
-  if (s.done) {
-    optimistic((d) => {
-      const st = d.steps.find((x) => x.id === stepId);
-      if (st) {
-        st.done = false;
-        delete st.doneAt;
-      }
-      d.doneLogs = d.doneLogs.filter((l) => !(l.refType === "step" && l.refId === stepId));
-    });
-    const updated = db.steps.find((x) => x.id === stepId);
-    if (updated) void remote.updateStep(updated);
-    void remote.deleteLogsByRef("step", stepId);
-  } else {
-    const doneAt = now();
-    const parentTag = db.items.find((i) => i.id === s.itemId)?.tag ?? null;
-    const log: DoneLog = {
-      id: uid(),
-      date: todayStr(),
-      refType: "step",
-      refId: stepId,
-      title: s.title,
-      tag: parentTag,
-      doneAt,
-    };
-    optimistic((d) => {
-      const st = d.steps.find((x) => x.id === stepId);
-      if (st) {
-        st.done = true;
-        st.doneAt = doneAt;
-      }
-      d.doneLogs.push(log);
-    });
-    const updated = db.steps.find((x) => x.id === stepId);
-    if (updated) void remote.updateStep(updated);
-    void remote.insertLog(log);
-  }
+  const next = !s.done;
+  optimistic((d) => {
+    const st = d.steps.find((x) => x.id === stepId);
+    if (st) {
+      st.done = next;
+      if (next) st.doneAt = now();
+      else delete st.doneAt;
+    }
+  });
+  const updated = db.steps.find((x) => x.id === stepId);
+  if (updated) void remote.updateStep(updated);
 }
 
 // --- できたことログ ---

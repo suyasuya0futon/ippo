@@ -109,6 +109,42 @@ function ClockIcon() {
   );
 }
 
+// 確定（✓）。タスク追加・ステップ追加の送信ボタン用。
+function CheckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" {...svgBase} strokeWidth={2.5}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+// 入力UIの外側をタップしたら閉じる（編集・タスク追加・ステップ追加で共通）。
+function useDismissOnOutside(
+  ref: { readonly current: HTMLElement | null },
+  active: boolean,
+  onDismiss: () => void,
+  ignoreSelector?: string
+) {
+  const cb = useRef(onDismiss);
+  useEffect(() => {
+    cb.current = onDismiss;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      const t = e.target as Node;
+      // 開閉トグル自体へのタップは無視（ここで閉じると直後の onClick で開き直してしまう）
+      if (ignoreSelector && t instanceof Element && t.closest(ignoreSelector)) return;
+      if (ref.current && !ref.current.contains(t)) cb.current();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [ref, active, ignoreSelector]);
+}
 
 type Mode = "today" | "future";
 
@@ -163,6 +199,10 @@ function SectionHead({
 export default function TaskListView({ mode }: { mode: Mode }) {
   const db = useStore();
   const [addOpen, setAddOpen] = useState<string | null>(null);
+  // 追加欄（開いてるのは常に1つ）。外側タップで閉じる。
+  // ただし開閉トグル(.add-btn)は除外（× で閉じた直後に onClick で開き直すのを防ぐ）。
+  const addPanelRef = useRef<HTMLDivElement>(null);
+  useDismissOnOutside(addPanelRef, addOpen !== null, () => setAddOpen(null), ".add-btn");
   // 畳まれているセクション（既定は全部開く。リロードで戻る＝覚えない）
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   // ドラッグ中のアイテムID（今後やるのみ）
@@ -243,7 +283,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
         </SectionHead>
         {/* 追加欄はアコーディオンの開閉とは独立（閉じてても出る） */}
         {addOpen === key && (
-          <div className="card">
+          <div className="card" ref={addPanelRef}>
             <ItemInput
               showRecurring={false}
               alwaysShowTags
@@ -579,28 +619,21 @@ function TaskRow({
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [stepText, setStepText] = useState("");
+  // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
+  const [stepsOpen, setStepsOpen] = useState(false);
   const editRef = useRef<HTMLDivElement>(null);
+  const stepAddRef = useRef<HTMLDivElement>(null);
 
   const isHabit = item.recurring;
   const isFlag = !isHabit; // 移動ボタン(⏳/🌱)はフラグタスク（＝一度きり）に出す
   const steps = db.steps.filter((s) => s.itemId === item.id).sort((a, b) => a.order - b.order);
   const isDone = isHabit ? Boolean(habitDone) : item.status === "done";
+  // 完了タスク（今日やる）で手順があるとき、タイトルをタップして手順を開閉できる
+  const canToggleSteps = mode === "today" && isDone && steps.length > 0;
 
-  // 編集中に外側を触ったら、キャンセルを押さなくても編集を解除する（保存はしない）。
-  useEffect(() => {
-    if (!editing) return;
-    const onDown = (e: MouseEvent | TouchEvent) => {
-      if (editRef.current && !editRef.current.contains(e.target as Node)) {
-        setEditing(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("touchstart", onDown);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("touchstart", onDown);
-    };
-  }, [editing]);
+  // 外側を触ったら閉じる（編集パネル／ステップ追加欄）。キャンセルボタン不要で揃える。
+  useDismissOnOutside(editRef, editing, () => setEditing(false));
+  useDismissOnOutside(stepAddRef, adding, () => setAdding(false));
 
   function submitStep() {
     addStep(item.id, stepText);
@@ -662,13 +695,24 @@ function TaskRow({
         </button>
         {/* 行本体（タグ＋文字）を掴んで移動。編集は右の鉛筆から。完了したものは掴めない。 */}
         <span
-          className={`step__label ${isDone ? "step__label--done" : ""}`}
-          style={{ flex: 1, cursor: dragProps ? "grab" : "default" }}
-          title={dragProps ? "ドラッグして移動" : undefined}
+          className="step__label"
+          style={{
+            flex: 1,
+            color: isDone ? "var(--text-soft)" : undefined,
+            cursor: dragProps ? "grab" : canToggleSteps ? "pointer" : "default",
+          }}
+          title={dragProps ? "ドラッグして移動" : canToggleSteps ? "タップで手順を開閉" : undefined}
+          onClick={canToggleSteps ? () => setStepsOpen((o) => !o) : undefined}
           {...(dragProps ?? {})}
         >
           <TagChip tag={item.tag} />
-          {item.title}
+          {/* 取り消し線はタイトル文字だけに付ける（タグ chip やキャレットには付けない） */}
+          <span style={isDone ? { textDecoration: "line-through" } : undefined}>{item.title}</span>
+          {canToggleSteps && (
+            <span className="section-head__caret" style={{ marginLeft: 6 }}>
+              {stepsOpen ? "▾" : "▸"}
+            </span>
+          )}
         </span>
         <span className="icon-actions">
           {/* 編集（鉛筆）。完了したものは触らない（編集不可）。 */}
@@ -708,35 +752,59 @@ function TaskRow({
       </div>
 
       {/* ステップ（今日やるのときだけ。今後やるでは砕かない） */}
-      {mode === "today" && steps.length > 0 && (
-        <div style={{ paddingLeft: 30 }}>
-          {steps.map((s) => (
-            <div key={s.id} className="step">
-              <button
-                className={`step__check ${s.done ? "step__check--done" : ""}`}
-                onClick={() => toggleStep(s.id)}
-                aria-label={s.done ? "完了を取り消す" : "完了にする"}
-              >
-                {s.done ? "✓" : ""}
-              </button>
-              <span className={`step__label ${s.done ? "step__label--done" : ""}`}>{s.title}</span>
-              <button
-                className="btn--ghost btn"
-                onClick={() => deleteStep(s.id)}
-                style={{ padding: "2px 6px" }}
-              >
-                ×
-              </button>
+      {mode === "today" &&
+        steps.length > 0 &&
+        (isDone ? (
+          // 完了タスク：タイトルタップで開閉。開いても閲覧のみ（チェック・削除なし。親✔＝全部やった扱い）。
+          stepsOpen && (
+            <div style={{ paddingLeft: 36, paddingBottom: 8 }}>
+              {steps.map((s) => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    fontSize: 14,
+                    color: "var(--text-soft)",
+                    padding: "2px 0",
+                  }}
+                >
+                  <span aria-hidden="true">・</span>
+                  <span>{s.title}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )
+        ) : (
+          <div style={{ paddingLeft: 30 }}>
+            {steps.map((s) => (
+              <div key={s.id} className="step">
+                <button
+                  className={`step__check ${s.done ? "step__check--done" : ""}`}
+                  onClick={() => toggleStep(s.id)}
+                  aria-label={s.done ? "完了を取り消す" : "完了にする"}
+                >
+                  {s.done ? "✓" : ""}
+                </button>
+                <span className={`step__label ${s.done ? "step__label--done" : ""}`}>{s.title}</span>
+                <button
+                  className="btn--ghost btn"
+                  onClick={() => deleteStep(s.id)}
+                  style={{ padding: "2px 6px" }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ))}
 
-      {/* 「小さな一歩を追加」は今日やるのときだけ（習慣にも出さない） */}
+      {/* 「小さな一歩を追加」は今日やるの未完了タスクだけ（習慣・完了済みには出さない） */}
       {mode === "today" &&
         !isHabit &&
+        !isDone &&
         (adding ? (
-          <div className="row" style={{ paddingLeft: 30, marginBottom: 10 }}>
+          <div className="row" ref={stepAddRef} style={{ paddingLeft: 30, marginBottom: 10 }}>
             <input
               type="text"
               placeholder="例：まずは布団から出る"
@@ -745,8 +813,13 @@ function TaskRow({
               onChange={(e) => setStepText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submitStep()}
             />
-            <button className="btn btn--small" style={{ flexShrink: 0 }} onClick={submitStep}>
-              ＋
+            <button
+              className="icon-btn icon-btn--accent"
+              style={{ flexShrink: 0 }}
+              onClick={submitStep}
+              aria-label="追加"
+            >
+              <CheckIcon />
             </button>
           </div>
         ) : (
