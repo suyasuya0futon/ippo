@@ -20,13 +20,16 @@ export default function DoneBookScreen() {
   const db = useStore();
   const [tag, setTag] = useState<string | null>(null);
 
+  // できた帳に載せるのは親タスク（item）だけ。手順（step）は親遂行のための足場なので含めない。
+  const itemLogs = db.doneLogs.filter((l) => l.refType === "item");
+
   // できたことに付いているタグ一覧
   const tags = [
-    ...new Set(db.doneLogs.map((l) => l.tag).filter((t): t is string => Boolean(t))),
+    ...new Set(itemLogs.map((l) => l.tag).filter((t): t is string => Boolean(t))),
   ].sort((a, b) => a.localeCompare(b, "ja"));
 
   // 絞り込んだログ
-  const logs = db.doneLogs.filter((l) => (tag ? l.tag === tag : true));
+  const logs = itemLogs.filter((l) => (tag ? l.tag === tag : true));
 
   // 表示する日付（新しい日が上）
   const dates = [...new Set(logs.map((l) => l.date))].sort((a, b) => b.localeCompare(a));
@@ -76,11 +79,6 @@ export default function DoneBookScreen() {
                     <span style={{ flex: 1 }}>
                       <TagChip tag={log.tag} />
                       {log.title}
-                      {log.refType === "step" && (
-                        <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>
-                          一歩
-                        </span>
-                      )}
                     </span>
                   </div>
                 ))}
