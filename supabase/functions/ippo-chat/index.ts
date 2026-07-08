@@ -72,6 +72,11 @@ function buildInput(taskTitle: string, taskTag: string, messages: IppoMessage[])
   const targetLines = [`対象タスク: ${taskTitle}`];
   if (taskTag) targetLines.push(`対象タグ: #${taskTag}`);
   if (taskTag === "裁縫") targetLines.push("タグ補足: #裁縫 の作業は基本的にミシンを使う前提で考える。");
+  if (taskTag === "買物") {
+    targetLines.push(
+      "タグ補足: #買物 は基本的に足りないもの・買う必要があるもののリスト。必要性や在庫確認ではなく、買い方、買う順番、買える場所、今できる入口を考える。"
+    );
+  }
 
   return [
     "あなたはタスクを進めるためのAI相談相手です。",
