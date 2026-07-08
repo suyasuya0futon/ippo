@@ -458,7 +458,8 @@ select {
    角ばった白い四角＋ふんわり影で、見出しごと中に入れる */
 .tlist {
   background: var(--surface);
-  padding: 10px 14px 6px;
+  /* 上下同値＝閉じて見出しだけになったとき、ちゃんと天地センターに見える */
+  padding: 8px 14px;
   margin-bottom: 14px;
   box-shadow: 0 3px 6px rgba(60, 80, 100, 0.1);
 }
