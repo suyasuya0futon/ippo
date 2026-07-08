@@ -654,16 +654,19 @@ function TaskRow({
   const [ippoText, setIppoText] = useState("");
   const [ippoLoading, setIppoLoading] = useState(false);
   const [ippoMessages, setIppoMessages] = useState<IppoMessage[]>([]);
+  const [completing, setCompleting] = useState(false);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
   const editRef = useRef<HTMLDivElement>(null);
   const stepAddRef = useRef<HTMLDivElement>(null);
   const ippoRef = useRef<HTMLDivElement>(null);
+  const completeTimerRef = useRef<number | null>(null);
 
   const isHabit = item.recurring;
   const isFlag = !isHabit; // 移動ボタン(⏳/🌱)はフラグタスク（＝一度きり）に出す
   const steps = db.steps.filter((s) => s.itemId === item.id).sort((a, b) => a.order - b.order);
   const isDone = isHabit ? Boolean(habitDone) : item.status === "done";
+  const displayDone = isDone || completing;
   // 完了タスク（今日やる）で手順があるとき、タイトルをタップして手順を開閉できる
   const canToggleSteps = mode === "today" && isDone && steps.length > 0;
 
@@ -671,6 +674,36 @@ function TaskRow({
   useDismissOnOutside(editRef, editing, () => setEditing(false));
   useDismissOnOutside(stepAddRef, adding, () => setAdding(false), ".step-start");
   useDismissOnOutside(ippoRef, ippoOpen, () => setIppoOpen(false), ".ippo-start");
+
+  useEffect(
+    () => () => {
+      if (completeTimerRef.current !== null) {
+        window.clearTimeout(completeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function handleDoneClick() {
+    if (completing) return;
+    if (isDone) {
+      if (isHabit) {
+        toggleRecurringToday(item.id);
+      } else {
+        reopenItem(item.id);
+      }
+      return;
+    }
+
+    setCompleting(true);
+    completeTimerRef.current = window.setTimeout(() => {
+      if (isHabit) {
+        toggleRecurringToday(item.id);
+      } else {
+        completeItem(item.id);
+      }
+    }, 520);
+  }
 
   function openStepAdd() {
     setAdding(true);
@@ -757,39 +790,33 @@ function TaskRow({
   }
 
   return (
-    <div className="trow" ref={dragRef} style={dragStyle}>
+    <div className={`trow ${completing ? "trow--completing" : ""}`} ref={dragRef} style={dragStyle}>
       {/* 本体の行。box-sizing:border-box なので min-height は padding 込み。
           未完了行（アイコンボタン34 + 上下padding22 = 56）に合わせて、完了行も同じ高さに揃える。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px", minHeight: 56 }}>
         {/* チェックで完了。今後やるから完了すると、今日やるの完了済みに移る（completeItem が bucket を today に）。 */}
         <button
-          className={`step__check ${isDone ? "step__check--done" : ""}`}
-          onClick={() =>
-            isHabit
-              ? toggleRecurringToday(item.id)
-              : isDone
-                ? reopenItem(item.id)
-                : completeItem(item.id)
-          }
-          aria-label={isDone ? "完了を取り消す" : "完了にする"}
+          className={`step__check ${displayDone ? "step__check--done" : ""}`}
+          onClick={handleDoneClick}
+          aria-label={displayDone ? "完了を取り消す" : "完了にする"}
         >
-          {isDone ? "✓" : ""}
+          {displayDone ? "✓" : ""}
         </button>
         {/* 行本体（タグ＋文字）を掴んで移動。編集は右の鉛筆から。完了したものは掴めない。 */}
         <span
           className="step__label"
           style={{
             flex: 1,
-            color: isDone ? "var(--text-soft)" : undefined,
-            cursor: dragProps ? "grab" : canToggleSteps ? "pointer" : "default",
+            color: displayDone ? "var(--text-soft)" : undefined,
+            cursor: displayDone ? "default" : dragProps ? "grab" : canToggleSteps ? "pointer" : "default",
           }}
-          title={dragProps ? "ドラッグして移動" : canToggleSteps ? "タップで手順を開閉" : undefined}
+          title={displayDone ? undefined : dragProps ? "ドラッグして移動" : canToggleSteps ? "タップで手順を開閉" : undefined}
           onClick={canToggleSteps ? () => setStepsOpen((o) => !o) : undefined}
-          {...(dragProps ?? {})}
+          {...(displayDone ? {} : (dragProps ?? {}))}
         >
           <TagChip tag={item.tag} />
           {/* 取り消し線はタイトル文字だけに付ける（タグ chip やキャレットには付けない） */}
-          <span style={isDone ? { textDecoration: "line-through" } : undefined}>{item.title}</span>
+          <span style={displayDone ? { textDecoration: "line-through" } : undefined}>{item.title}</span>
           {canToggleSteps && (
             <span className="section-head__caret" style={{ marginLeft: 6 }}>
               {stepsOpen ? "▾" : "▸"}
@@ -798,7 +825,7 @@ function TaskRow({
         </span>
         <span className="icon-actions">
           {/* 編集（鉛筆）。完了したものは触らない（編集不可）。 */}
-          {!isDone && (
+          {!displayDone && (
             <button
               className="icon-btn icon-btn--ghost"
               title="編集"
@@ -809,7 +836,7 @@ function TaskRow({
             </button>
           )}
           {/* フラグタスクのみ。今日やる＝⏳今後やるへ（近日中）／今後やる＝🌱今日やるに */}
-          {mode === "today" && isFlag && !isDone && (
+          {mode === "today" && isFlag && !displayDone && (
             <button
               className="icon-btn"
               title="今後やるに移動"
@@ -819,7 +846,7 @@ function TaskRow({
               <ClockIcon />
             </button>
           )}
-          {mode === "future" && isFlag && (
+          {mode === "future" && isFlag && !displayDone && (
             <button
               className="icon-btn"
               title="今日やるにする"
@@ -881,7 +908,7 @@ function TaskRow({
           </div>
         ))}
 
-      {mode === "today" && !isHabit && !isDone && !adding && !ippoOpen && (
+      {mode === "today" && !isHabit && !displayDone && !adding && !ippoOpen && (
         <div className="task-actions">
           <button
             className="step-start btn--ghost btn"

@@ -474,6 +474,33 @@ select {
   border-bottom: 1px solid var(--line);
 }
 
+.trow--completing {
+  animation: trow-complete 520ms ease forwards;
+}
+
+.trow--completing .step__check {
+  transform: scale(1.06);
+  transition: transform 140ms ease;
+}
+
+@keyframes trow-complete {
+  0% {
+    background: transparent;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  35% {
+    background: #f0f7f1;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    background: #f0f7f1;
+    opacity: 0.25;
+    transform: translateY(-4px);
+  }
+}
+
 /* 完了分の折りたたみ行（今日やる）。タップで完了済みタスクを開閉する */
 .done-fold {
   width: 100%;
