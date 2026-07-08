@@ -30,6 +30,8 @@ body,
   margin: 0;
   padding: 0;
   min-height: 100%;
+  /* 左右幅は固定。想定外の横はみ出しでも横スクロールを出さない。 */
+  overflow-x: hidden;
 }
 
 body {
@@ -285,7 +287,9 @@ input[type="text"],
 input[type="password"],
 textarea {
   font-family: inherit;
-  font-size: 15px;
+  /* iOS Safari はフォーカス時に font-size < 16px の入力欄を自動ズームする
+     （拡大したまま戻らず横スクロールが出る）。16px にして自動ズームを防ぐ。 */
+  font-size: 16px;
   width: 100%;
   padding: 11px 13px;
   border: 1px solid var(--line);
@@ -313,7 +317,7 @@ textarea:focus {
 
 select {
   font-family: inherit;
-  font-size: 15px;
+  font-size: 16px; /* 入力欄と同じく iOS の自動ズーム対策 */
   padding: 11px 13px;
   border: 1px solid var(--line);
   border-radius: 12px;
