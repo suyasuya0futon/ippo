@@ -205,6 +205,8 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   useDismissOnOutside(addPanelRef, addOpen !== null, () => setAddOpen(null), ".add-btn");
   // 畳まれているセクション（既定は全部開く。リロードで戻る＝覚えない）
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // 完了分を開いているセクション（既定は全部閉じる＝残タスクだけ見える）
+  const [doneOpen, setDoneOpen] = useState<Set<string>>(() => new Set());
   // ドラッグ中のアイテムID（今後やるのみ）
   const [dragId, setDragId] = useState<string | null>(null);
   // ドラッグは行本体（タグ＋文字）を掴んで開始。
@@ -219,6 +221,14 @@ export default function TaskListView({ mode }: { mode: Mode }) {
 
   const toggleCollapse = (key: string) =>
     setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const toggleDoneOpen = (key: string) =>
+    setDoneOpen((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -251,6 +261,17 @@ export default function TaskListView({ mode }: { mode: Mode }) {
       />
     );
     const bothEmpty = items.length === 0 && doneItems.length === 0;
+    // 完了分は「完了 ◯件」の折りたたみにまとめる（既定は閉＝残タスクだけ見える）
+    const isDoneOpen = doneOpen.has(key);
+    const doneFold = doneItems.length > 0 && (
+      <>
+        <button className="done-fold" onClick={() => toggleDoneOpen(key)}>
+          <span className="section-head__caret">{isDoneOpen ? "▾" : "▸"}</span>
+          完了 {doneItems.length}件
+        </button>
+        {isDoneOpen && doneItems.map(plainRow)}
+      </>
+    );
     const rows = bothEmpty ? (
       <div className="empty" style={{ padding: "12px 8px" }}>
         {emptyText}
@@ -266,7 +287,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
             habitDone={habitDoneOf ? habitDoneOf(it) : undefined}
           />
         ))}
-        {doneItems.map(plainRow)}
+        {doneFold}
       </>
     ) : (
       items.map(plainRow)
@@ -509,17 +530,6 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     >
       <div>
         {section(
-          "habit",
-          `毎日の習慣${countLabel(habitsRemaining, habits.length, true)}`,
-          habitsOpen,
-          "毎日やること（例：プロテイン飲む #からだ）",
-          (input) => addItem(input, true),
-          "習慣はありません。",
-          (it) => isDoneToday(db, it.id),
-          true,
-          habitsDone
-        )}
-        {section(
           "task",
           `今日のタスク${countLabel(todayRemaining, todayItems.length, true)}`,
           todayOpen,
@@ -529,6 +539,17 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           undefined,
           true,
           todayDone
+        )}
+        {section(
+          "habit",
+          `毎日の習慣${countLabel(habitsRemaining, habits.length, true)}`,
+          habitsOpen,
+          "毎日やること（例：プロテイン飲む #からだ）",
+          (input) => addItem(input, true),
+          "習慣はありません。",
+          (it) => isDoneToday(db, it.id),
+          true,
+          habitsDone
         )}
       </div>
       <DragOverlay>

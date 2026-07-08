@@ -459,6 +459,20 @@ select {
   border-bottom: 1px solid var(--line);
 }
 
+/* 完了分の折りたたみ行（今日やる）。タップで完了済みタスクを開閉する */
+.done-fold {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 11px 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
 .trow:last-child {
   border-bottom: none;
 }
