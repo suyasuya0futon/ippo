@@ -293,7 +293,8 @@ export default function TaskListView({ mode }: { mode: Mode }) {
       items.map(plainRow)
     );
     return (
-      <>
+      // 見出しもリストも1枚の「紙」の中。閉じると「見出しだけの紙」が残る
+      <div className="tlist">
         <SectionHead
           collapsed={isCollapsed}
           onToggleCollapse={() => toggleCollapse(key)}
@@ -304,7 +305,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
         </SectionHead>
         {/* 追加欄はアコーディオンの開閉とは独立（閉じてても出る） */}
         {addOpen === key && (
-          <div className="card" ref={addPanelRef}>
+          <div className="tlist__add" ref={addPanelRef}>
             <ItemInput
               showRecurring={false}
               alwaysShowTags
@@ -329,9 +330,9 @@ export default function TaskListView({ mode }: { mode: Mode }) {
               </SortableContext>
             </DroppableBucket>
           ) : (
-            <div className="card">{rows}</div>
+            <div>{rows}</div>
           ))}
-      </>
+      </div>
     );
   }
 
@@ -570,13 +571,13 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   );
 }
 
-// 今後やるのバケット（カード）。空でもドロップ先になれるよう droppable にする。
+// 今後やるのバケット（リスト）。空でもドロップ先になれるよう droppable にする。
+// 紙（.tlist）の中に入る素の入れ物。受け入れ中だけ点線枠を出す。
 function DroppableBucket({ id, children }: { id: string; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
     <div
       ref={setNodeRef}
-      className="card"
       style={isOver ? { outline: "2px dashed var(--accent)", outlineOffset: -2 } : undefined}
     >
       {children}
