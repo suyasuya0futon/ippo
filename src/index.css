@@ -488,40 +488,62 @@ select {
   color: var(--text-soft);
 }
 
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 0 0 10px 30px;
+}
+
+.task-actions .btn {
+  padding: 0;
+  font-size: 13px;
+}
+
 .ippo-start {
   color: #5b7d93;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .ippo-chat {
+  position: relative;
   margin: 0 0 12px 30px;
-  padding: 10px;
+  padding: 8px 14px 8px 10px;
   background: #f2f7fa;
   border: 1px solid #d8e6ee;
   color: #3b4a54;
 }
 
-.ippo-chat__head {
-  display: flex;
+.ippo-chat__close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-  color: #5b7d93;
-  font-size: 13px;
-  font-weight: 700;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: #8aa2b2;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
 }
 
 .ippo-chat__bubble {
-  margin-bottom: 10px;
-  padding: 9px 11px;
+  margin: 0 16px 8px 0;
+  padding: 0 0 4px;
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
 .ippo-chat__bubble--ippo {
-  background: var(--surface);
-  border: 1px solid #d8e6ee;
+  background: transparent;
+  border: 0;
 }
 
 .ippo-chat__input {
@@ -531,8 +553,44 @@ select {
 }
 
 .ippo-chat__input textarea {
-  min-height: 46px;
+  min-height: 86px;
   resize: vertical;
+}
+
+.ippo-chat__loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+}
+
+.ippo-chat__loading span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7fa9c3;
+  animation: ippo-loading 1s infinite ease-in-out;
+}
+
+.ippo-chat__loading span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ippo-chat__loading span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ippo-loading {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
 }
 
 .trow:last-child {

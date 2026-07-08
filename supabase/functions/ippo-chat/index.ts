@@ -11,6 +11,7 @@ type IppoMessage = {
 
 type RequestBody = {
   taskTitle?: string;
+  taskTag?: string | null;
   messages?: IppoMessage[];
 };
 
@@ -64,24 +65,28 @@ function geminiErrorDetail(data: Record<string, unknown>): string {
   return parts.join(": ").slice(0, 500) || "unknown_gemini_error";
 }
 
-function buildInput(taskTitle: string, messages: IppoMessage[]) {
+function buildInput(taskTitle: string, taskTag: string, messages: IppoMessage[]) {
   const conversation = messages
-    .map((message) => `${message.role === "user" ? "ユーザー" : "一歩さん"}: ${message.text}`)
+    .map((message) => `${message.role === "user" ? "ユーザー" : "AI"}: ${message.text}`)
     .join("\n");
+  const targetLines = [`対象タスク: ${taskTitle}`];
+  if (taskTag) targetLines.push(`対象タグ: #${taskTag}`);
+  if (taskTag === "裁縫") targetLines.push("タグ補足: #裁縫 の作業は基本的にミシンを使う前提で考える。");
 
   return [
-    "あなたはタスク相談相手の「一歩さん」。",
-    "ユーザーは、うつ状態や疲労で動き出せないことがある。",
-    "医療助言・診断・治療判断はしない。危機的な自傷他害の表現があれば、身近な人や緊急窓口への相談を短く促す。",
-    "叱らない。急かさない。説教しない。『頑張れ』を多用しない。",
-    "タスクを保存するステップに分解するのではなく、今どこで詰まっているかを聞き、次に動ける小さな入口を一緒に探す。",
-    "返答は日本語で、最大120文字程度。最後は自然な短い問いで終える。",
-    `対象タスク: ${taskTitle}`,
+    "あなたはタスクを進めるためのAI相談相手です。",
+    "このアプリ「一歩」は、今日の行動に向き合うための個人用タスクアプリです。",
+    "ユーザーを管理・評価するのではなく、淡々と次の一歩を手伝う存在です。",
+    "AIとの会話や提案は保存されず、完了記録はタスク本体だけに残ります。",
+    "内容は簡潔に伝え、説明しすぎない。",
+    "タスクを保存するステップに分解せず、今どこで詰まっているかを聞き、次に動ける小さな入口を一緒に探す。",
+    "返答は日本語で、最大100文字程度。最後は自然な短い問いで終える。",
+    ...targetLines,
     "",
     "これまでの会話:",
     conversation || "まだ会話はありません。",
     "",
-    "一歩さんの次の返答だけを書いてください。",
+    "AIの次の返答だけを書いてください。",
   ].join("\n");
 }
 
@@ -102,6 +107,7 @@ Deno.serve(async (req) => {
   const taskTitle = String(body.taskTitle ?? "").trim().slice(0, 200);
   if (!taskTitle) return jsonResponse({ error: "missing_task_title" }, 400);
 
+  const taskTag = String(body.taskTag ?? "").trim().replace(/^[#＃]/, "").slice(0, 80);
   const messages = sanitizeMessages(Array.isArray(body.messages) ? body.messages : []);
   const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.1-flash-lite";
 
@@ -114,7 +120,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model,
-        input: buildInput(taskTitle, messages),
+        input: buildInput(taskTitle, taskTag, messages),
       }),
     });
 
