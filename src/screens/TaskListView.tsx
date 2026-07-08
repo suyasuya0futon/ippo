@@ -24,7 +24,6 @@ import {
   reorderBucket,
   reorderItems,
   convertItemType,
-  addStep,
   toggleStep,
   deleteStep,
   deleteItem,
@@ -38,6 +37,7 @@ import {
 import type { Bucket, DB, Item } from "../types";
 import { TagChip } from "../components/TagChip";
 import ItemInput from "../components/ItemInput";
+import { requestIppoReply, type IppoMessage } from "../ippoAi";
 
 const FUTURE_BUCKETS = ["tomorrow", "soon", "someday"] as const;
 type FutureBucket = (typeof FUTURE_BUCKETS)[number];
@@ -147,7 +147,6 @@ function useDismissOnOutside(
 }
 
 type Mode = "today" | "future";
-
 // 手動の並び（sortOrder 昇順。小さいほど上）
 const bySortOrder = (a: Item, b: Item) => a.sortOrder - b.sortOrder;
 
@@ -158,6 +157,13 @@ function countLabel(remaining: number, total: number, celebrate: boolean): strin
   if (total === 0) return "";
   if (remaining > 0) return `（${remaining}）`;
   return celebrate ? "（完了🎉）" : "";
+}
+
+function initialIppoMessage(title: string): IppoMessage {
+  return {
+    role: "ippo",
+    text: `「${title}」だね。いま一番ひっかかってるところ、ひとことだけ教えて。`,
+  };
 }
 
 // セクション見出し。左（タイトル）=開閉スイッチ、右＝追加 ➕。
@@ -639,12 +645,16 @@ function TaskRow({
   dragProps?: Record<string, unknown>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [stepText, setStepText] = useState("");
+  const [ippoOpen, setIppoOpen] = useState(false);
+  const [ippoText, setIppoText] = useState("");
+  const [ippoLoading, setIppoLoading] = useState(false);
+  const [ippoMessages, setIppoMessages] = useState<IppoMessage[]>(() => [
+    initialIppoMessage(item.title),
+  ]);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
   const editRef = useRef<HTMLDivElement>(null);
-  const stepAddRef = useRef<HTMLDivElement>(null);
+  const ippoRef = useRef<HTMLDivElement>(null);
 
   const isHabit = item.recurring;
   const isFlag = !isHabit; // 移動ボタン(⏳/🌱)はフラグタスク（＝一度きり）に出す
@@ -655,11 +665,34 @@ function TaskRow({
 
   // 外側を触ったら閉じる（編集パネル／ステップ追加欄）。キャンセルボタン不要で揃える。
   useDismissOnOutside(editRef, editing, () => setEditing(false));
-  useDismissOnOutside(stepAddRef, adding, () => setAdding(false));
+  useDismissOnOutside(ippoRef, ippoOpen, () => setIppoOpen(false), ".ippo-start");
 
-  function submitStep() {
-    addStep(item.id, stepText);
-    setStepText("");
+  function openIppo() {
+    setIppoOpen(true);
+    setIppoMessages((messages) => (messages.length > 0 ? messages : [initialIppoMessage(item.title)]));
+  }
+
+  async function submitIppoMessage() {
+    const input = ippoText.trim();
+    if (!input || ippoLoading) return;
+    const nextMessages: IppoMessage[] = [...ippoMessages, { role: "user", text: input }];
+    setIppoMessages(nextMessages);
+    setIppoText("");
+    setIppoLoading(true);
+    try {
+      const reply = await requestIppoReply(item.title, nextMessages);
+      setIppoMessages((messages) => [...messages, { role: "ippo", text: reply }]);
+    } catch {
+      setIppoMessages((messages) => [
+        ...messages,
+        {
+          role: "ippo",
+          text: "ごめん、今は一歩さんにつながらなかった。少し時間を置いて、もう一度だけ話しかけてみて。",
+        },
+      ]);
+    } finally {
+      setIppoLoading(false);
+    }
   }
 
   // 編集パネル：1行（🗑左・入力中央・✓右）。キャンセルは外タップで解除。種類は保持。
@@ -821,36 +854,56 @@ function TaskRow({
           </div>
         ))}
 
-      {/* 「小さな一歩を追加」は今日やるの未完了タスクだけ（習慣・完了済みには出さない） */}
+      {/* 一歩さんは保存しない一時チャット。今日やるの未完了タスクだけに出す。 */}
       {mode === "today" &&
         !isHabit &&
         !isDone &&
-        (adding ? (
-          <div className="row" ref={stepAddRef} style={{ paddingLeft: 30, marginBottom: 10 }}>
-            <input
-              type="text"
-              placeholder="例：まずは布団から出る"
-              value={stepText}
-              autoFocus
-              onChange={(e) => setStepText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submitStep()}
-            />
-            <button
-              className="icon-btn icon-btn--accent"
-              style={{ flexShrink: 0 }}
-              onClick={submitStep}
-              aria-label="追加"
-            >
-              <CheckIcon />
-            </button>
+        (ippoOpen ? (
+          <div className="ippo-chat" ref={ippoRef}>
+            <div className="ippo-chat__head">
+              <span>一歩さん</span>
+              <button className="btn btn--ghost" onClick={() => setIppoOpen(false)}>
+                閉じる
+              </button>
+            </div>
+            <div className="ippo-chat__bubble ippo-chat__bubble--ippo">
+              {ippoLoading
+                ? "一歩さんが考えています。"
+                : ippoMessages.findLast((message) => message.role === "ippo")?.text}
+            </div>
+            <div className="ippo-chat__input">
+              <textarea
+                placeholder="今ひっかかってることを一言"
+                value={ippoText}
+                autoFocus
+                disabled={ippoLoading}
+                rows={2}
+                onChange={(e) => setIppoText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submitIppoMessage();
+                  }
+                }}
+              />
+              <button
+                className="icon-btn icon-btn--accent"
+                style={{ flexShrink: 0 }}
+                onClick={submitIppoMessage}
+                disabled={ippoLoading}
+                aria-label="送る"
+              >
+                <CheckIcon />
+              </button>
+            </div>
           </div>
         ) : (
           <button
-            className="btn--ghost btn"
+            className="ippo-start btn--ghost btn"
             style={{ padding: "0 0 10px 30px", fontSize: 13 }}
-            onClick={() => setAdding(true)}
+            onClick={openIppo}
           >
-            ＋ 小さな一歩を追加する
+            一歩さんと始める
           </button>
         ))}
     </div>

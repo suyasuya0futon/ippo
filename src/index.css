@@ -488,6 +488,53 @@ select {
   color: var(--text-soft);
 }
 
+.ippo-start {
+  color: #5b7d93;
+}
+
+.ippo-chat {
+  margin: 0 0 12px 30px;
+  padding: 10px;
+  background: #f2f7fa;
+  border: 1px solid #d8e6ee;
+  color: #3b4a54;
+}
+
+.ippo-chat__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #5b7d93;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ippo-chat__bubble {
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ippo-chat__bubble--ippo {
+  background: var(--surface);
+  border: 1px solid #d8e6ee;
+}
+
+.ippo-chat__input {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.ippo-chat__input textarea {
+  min-height: 46px;
+  resize: vertical;
+}
+
 .trow:last-child {
   border-bottom: none;
 }
