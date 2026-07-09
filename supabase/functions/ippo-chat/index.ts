@@ -22,6 +22,36 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+async function requireAuthenticatedUser(req: Request): Promise<Response | null> {
+  const authorization = req.headers.get("Authorization");
+  if (!authorization?.startsWith("Bearer ")) {
+    return jsonResponse({ error: "unauthorized" }, 401);
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error("Supabase auth environment variables are missing");
+    return jsonResponse({ error: "auth_not_configured" }, 500);
+  }
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      Authorization: authorization,
+      apikey: supabaseAnonKey,
+    },
+  });
+
+  if (!response.ok) return jsonResponse({ error: "unauthorized" }, 401);
+
+  const user = (await response.json()) as { id?: unknown };
+  if (typeof user.id !== "string" || !user.id) {
+    return jsonResponse({ error: "unauthorized" }, 401);
+  }
+
+  return null;
+}
+
 function sanitizeMessages(messages: IppoMessage[]): IppoMessage[] {
   return messages
     .filter((message) => message.role === "ippo" || message.role === "user")
@@ -102,6 +132,9 @@ function buildInput(taskTitle: string, taskTag: string, messages: IppoMessage[])
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+
+  const authError = await requireAuthenticatedUser(req);
+  if (authError) return authError;
 
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) return jsonResponse({ error: "missing_gemini_api_key" }, 500);
