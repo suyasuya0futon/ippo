@@ -804,12 +804,29 @@ function TaskRow({
         onStatus: setIppoVoiceStatus,
         onError: (message) => {
           console.error("Realtime イベントエラー", message);
-          setIppoVoiceError("音声AIでエラーが起きました。いったん閉じて、もう一度試してください。");
+          setIppoVoiceError(
+            message === "task_complete_timeout"
+              ? "完了の合図がうまく届きませんでした。お手数ですが、チェックで完了にしてください。"
+              : "音声AIでエラーが起きました。いったん閉じて、もう一度試してください。",
+          );
         },
         onAssistantResponseStart: () => setIppoVoiceTranscript(""),
         onTranscript: (text) => setIppoVoiceTranscript((transcript) => transcript + text),
         onAssistantTranscriptFinal: (text) => saveIppoVoiceMessage("assistant", text),
         onUserTranscript: (text, spokenAt) => saveIppoVoiceMessage("user", text, spokenAt),
+        onTaskComplete: () => {
+          // AIがほめ終わったら、会話を閉じて手動と同じチェック演出・同じ分岐で完了にする。
+          closeIppo();
+          if (completing || isDone) return;
+          setCompleting(true);
+          completeTimerRef.current = window.setTimeout(() => {
+            if (isHabit) {
+              toggleRecurringToday(item.id);
+            } else {
+              completeItem(item.id);
+            }
+          }, 520);
+        },
       });
       if (realtimeStartIdRef.current !== startId || abortController.signal.aborted) {
         conversation.stop();

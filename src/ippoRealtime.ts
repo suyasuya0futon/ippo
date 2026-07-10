@@ -42,6 +42,7 @@ type StartRealtimeOptions = {
   onTranscript?: (text: string) => void;
   onAssistantTranscriptFinal?: (text: string) => void;
   onUserTranscript?: (text: string, spokenAt: string) => void;
+  onTaskComplete?: () => void;
 };
 
 async function transcribeUserAudio(audio: Blob): Promise<string> {
@@ -105,6 +106,7 @@ export async function startIppoRealtimeConversation({
   onTranscript,
   onAssistantTranscriptFinal,
   onUserTranscript,
+  onTaskComplete,
 }: StartRealtimeOptions): Promise<IppoRealtimeConversation> {
   onStatus("connecting");
 
@@ -172,6 +174,9 @@ export async function startIppoRealtimeConversation({
   let userSpeechRecorder: MediaRecorder | null = null;
   let userSpeechChunks: Blob[] = [];
   let userSpeechEndedAt = "";
+  let taskCompletePending = false;
+  let taskCompleteNotified = false;
+  let taskCompleteTimerId: number | null = null;
 
   const startUserSpeechRecorder = () => {
     if (stopped || userSpeechRecorder || !localStream || typeof MediaRecorder === "undefined") return;
@@ -210,6 +215,7 @@ export async function startIppoRealtimeConversation({
     if (stopped) return;
     stopped = true;
     if (timerId !== null) window.clearTimeout(timerId);
+    if (taskCompleteTimerId !== null) window.clearTimeout(taskCompleteTimerId);
     if (userSpeechRecorder) {
       userSpeechRecorder.onstop = null;
       stopUserSpeechRecorder();
@@ -225,6 +231,26 @@ export async function startIppoRealtimeConversation({
     onStatus("ended");
   };
   stopConversation = stop;
+
+  // complete_task が呼ばれたら、完了結果をモデルへ返してほめ言葉を話してもらい、
+  // 言い終えた合図（音声の停止イベント）を待ってから完了を通知する。
+  const notifyTaskComplete = () => {
+    if (taskCompleteNotified || stopped) return;
+    taskCompleteNotified = true;
+    if (taskCompleteTimerId !== null) window.clearTimeout(taskCompleteTimerId);
+    taskCompleteTimerId = null;
+    onTaskComplete?.();
+  };
+  // ほめ言葉が届かないまま待ち続けないための保険。タスクは完了にせず、会話だけ終える。
+  const scheduleTaskCompleteFallback = (ms: number) => {
+    if (taskCompleteTimerId !== null) window.clearTimeout(taskCompleteTimerId);
+    taskCompleteTimerId = window.setTimeout(() => {
+      taskCompleteTimerId = null;
+      if (taskCompleteNotified || stopped) return;
+      onError("task_complete_timeout");
+      stop();
+    }, ms);
+  };
 
   pc.ontrack = (event) => {
     audio.srcObject = event.streams[0];
@@ -253,6 +279,7 @@ export async function startIppoRealtimeConversation({
         type?: unknown;
         delta?: unknown;
         transcript?: unknown;
+        item?: { type?: unknown; name?: unknown; call_id?: unknown };
         error?: { message?: string };
       };
       if (typeof message.type === "string") {
@@ -272,13 +299,47 @@ export async function startIppoRealtimeConversation({
           userSpeechEndedAt = new Date().toISOString();
           stopUserSpeechRecorder();
         }
+        if (
+          message.type === "response.output_item.done" &&
+          message.item?.type === "function_call" &&
+          message.item.name === "complete_task" &&
+          typeof message.item.call_id === "string"
+        ) {
+          taskCompletePending = true;
+          // 関数の結果をモデルへ返し、締めくくりのほめ言葉を音声で作ってもらう。
+          dataChannel.send(
+            JSON.stringify({
+              type: "conversation.item.create",
+              item: {
+                type: "function_call_output",
+                call_id: message.item.call_id,
+                output: JSON.stringify({ success: true }),
+              },
+            }),
+          );
+          dataChannel.send(
+            JSON.stringify({
+              type: "response.create",
+              response: {
+                output_modalities: ["audio"],
+              },
+            }),
+          );
+          scheduleTaskCompleteFallback(15000);
+        }
         if (message.type === "output_audio_buffer.started") {
+          if (taskCompletePending) scheduleTaskCompleteFallback(15000);
           stopUserSpeechRecorder();
           setMicEnabled(false);
         }
         if (message.type === "output_audio_buffer.stopped") {
-          setMicEnabled(true);
-          startUserSpeechRecorder();
+          if (taskCompletePending) {
+            // ほめ言葉を言い終えた。マイクは再開せず、そのまま完了へ。
+            notifyTaskComplete();
+          } else {
+            setMicEnabled(true);
+            startUserSpeechRecorder();
+          }
         }
       }
       if (message.type === "error") {
