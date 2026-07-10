@@ -3,6 +3,9 @@ import { supabase } from "./supabase";
 export const IPPO_AI_PROVIDER =
   (import.meta.env.VITE_IPPO_AI_PROVIDER as "gemini" | "openai-realtime" | undefined) ?? "gemini";
 
+// スピーカー音の残響をマイクが拾わないよう、AI音声の終了後も少しだけマイクを閉じておく。
+const MIC_RESUME_GRACE_MS = 1500;
+
 type RealtimeSessionResponse = {
   clientSecret?: string;
   expiresAt?: number;
@@ -174,6 +177,7 @@ export async function startIppoRealtimeConversation({
   const maxSeconds = Math.max(15, Number(data?.maxSeconds ?? 180));
   let stopped = false;
   let timerId: number | null = null;
+  let micResumeTimerId: number | null = null;
   let userSpeechRecorder: MediaRecorder | null = null;
   let userSpeechChunks: Blob[] = [];
   let userSpeechEndedAt = "";
@@ -222,6 +226,7 @@ export async function startIppoRealtimeConversation({
     if (stopped) return;
     stopped = true;
     if (timerId !== null) window.clearTimeout(timerId);
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
     if (taskCompleteTimerId !== null) window.clearTimeout(taskCompleteTimerId);
     if (userSpeechRecorder) {
       userSpeechRecorder.onstop = null;
@@ -269,6 +274,25 @@ export async function startIppoRealtimeConversation({
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
   const dataChannel = pc.createDataChannel("oai-events");
+
+  const clearInputAudioBuffer = () => {
+    if (dataChannel.readyState === "open") {
+      dataChannel.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+    }
+  };
+  const resumeMicrophone = () => {
+    if (stopped || outputAudioActive || taskCompleteCallId) return;
+    clearInputAudioBuffer();
+    setMicEnabled(true);
+    startUserSpeechRecorder();
+  };
+  const scheduleMicrophoneResume = () => {
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
+    micResumeTimerId = window.setTimeout(() => {
+      micResumeTimerId = null;
+      resumeMicrophone();
+    }, MIC_RESUME_GRACE_MS);
+  };
 
   // 発話への割り込み。生成中なら生成を止め、再生中の音声を破棄してマイクに戻す。
   // 完了シーケンス中（ほめ言葉）は割り込まない。
@@ -365,9 +389,15 @@ export async function startIppoRealtimeConversation({
         }
         if (message.type === "output_audio_buffer.started") {
           outputAudioActive = true;
+          if (micResumeTimerId !== null) {
+            window.clearTimeout(micResumeTimerId);
+            micResumeTimerId = null;
+          }
           if (taskCompleteCallId) scheduleTaskCompleteFallback(15000);
           stopUserSpeechRecorder();
           setMicEnabled(false);
+          // AIが話し始める直前の残り入力を捨て、次の発話のきっかけにしない。
+          clearInputAudioBuffer();
         }
         if (message.type === "output_audio_buffer.stopped" || message.type === "output_audio_buffer.cleared") {
           outputAudioActive = false;
@@ -375,8 +405,12 @@ export async function startIppoRealtimeConversation({
             // ほめ言葉を言い終えた。そのまま完了へ。
             notifyTaskComplete();
           } else if (!taskCompleteCallId) {
-            setMicEnabled(true);
-            startUserSpeechRecorder();
+            if (message.type === "output_audio_buffer.cleared") {
+              // ユーザー自身が「止める」を押したときは、待たずに話せるようにする。
+              resumeMicrophone();
+            } else {
+              scheduleMicrophoneResume();
+            }
           }
         }
       }
