@@ -272,7 +272,8 @@ Deno.serve(async (req) => {
           model,
           instructions: buildInstructions(taskTitle, taskTag, steps),
           output_modalities: ["audio"],
-          max_output_tokens: 200,
+          // 音声トークンは文字数より速く消費するため、短い案内でも途中で途切れない余裕を持たせる。
+          max_output_tokens: 1000,
           audio: {
             input: {
               turn_detection: {
