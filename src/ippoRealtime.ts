@@ -31,6 +31,12 @@ type StartRealtimeOptions = {
   onError: (message: string) => void;
 };
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "unknown_error";
+}
+
 function statusFromEventType(type: string): IppoRealtimeStatus | null {
   if (type === "input_audio_buffer.speech_started") return "listening";
   if (type === "input_audio_buffer.speech_stopped") return "thinking";
@@ -70,7 +76,7 @@ export async function startIppoRealtimeConversation({
   if (error) {
     console.error("Realtime セッション作成失敗", error);
     localStream.getTracks().forEach((track) => track.stop());
-    throw new Error("realtime_session_request_failed");
+    throw new Error(`realtime_session_request_failed: ${errorMessage(error)}`);
   }
   if (data?.error) {
     console.error("Realtime セッション作成エラー", data.error);
@@ -165,7 +171,7 @@ export async function startIppoRealtimeConversation({
     const detail = await sdpResponse.text();
     console.error("Realtime SDP 接続失敗", sdpResponse.status, detail.slice(0, 500));
     stop();
-    throw new Error("realtime_sdp_failed");
+    throw new Error(`realtime_sdp_failed: ${sdpResponse.status} ${detail.slice(0, 180)}`);
   }
 
   await pc.setRemoteDescription({

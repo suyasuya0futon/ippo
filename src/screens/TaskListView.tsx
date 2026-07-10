@@ -772,7 +772,12 @@ function TaskRow({
     } catch (error) {
       console.error("Realtime 接続失敗", error);
       setIppoVoiceStatus("error");
-      setIppoVoiceError("今は音声AIにつながりませんでした。少し時間を置いて、もう一度試してください。");
+      const detail = error instanceof Error ? error.message : "";
+      setIppoVoiceError(
+        detail
+          ? `音声AIにつながりませんでした: ${detail}`
+          : "今は音声AIにつながりませんでした。少し時間を置いて、もう一度試してください。",
+      );
     } finally {
       setIppoLoading(false);
     }
