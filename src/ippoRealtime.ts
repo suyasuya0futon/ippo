@@ -32,7 +32,7 @@ type StartRealtimeOptions = {
   signal?: AbortSignal;
   onStatus: (status: IppoRealtimeStatus) => void;
   onError: (message: string) => void;
-  onAssistantSpeechStart?: () => void;
+  onAssistantResponseStart?: () => void;
   onTranscript?: (text: string) => void;
 };
 
@@ -81,7 +81,7 @@ export async function startIppoRealtimeConversation({
   signal,
   onStatus,
   onError,
-  onAssistantSpeechStart,
+  onAssistantResponseStart,
   onTranscript,
 }: StartRealtimeOptions): Promise<IppoRealtimeConversation> {
   onStatus("connecting");
@@ -202,8 +202,8 @@ export async function startIppoRealtimeConversation({
         }
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
+        if (message.type === "response.created") onAssistantResponseStart?.();
         if (message.type === "output_audio_buffer.started") setMicEnabled(false);
-        if (message.type === "output_audio_buffer.started") onAssistantSpeechStart?.();
         if (message.type === "output_audio_buffer.stopped") setMicEnabled(true);
       }
       if (message.type === "error") {

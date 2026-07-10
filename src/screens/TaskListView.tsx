@@ -783,7 +783,7 @@ function TaskRow({
           console.error("Realtime イベントエラー", message);
           setIppoVoiceError("音声AIでエラーが起きました。いったん閉じて、もう一度試してください。");
         },
-        onAssistantSpeechStart: () => setIppoVoiceTranscript(""),
+        onAssistantResponseStart: () => setIppoVoiceTranscript(""),
         onTranscript: (text) => setIppoVoiceTranscript((transcript) => transcript + text),
       });
       if (realtimeStartIdRef.current !== startId || abortController.signal.aborted) {
