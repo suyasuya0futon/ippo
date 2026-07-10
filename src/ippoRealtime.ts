@@ -174,7 +174,10 @@ export async function startIppoRealtimeConversation({
   let userSpeechRecorder: MediaRecorder | null = null;
   let userSpeechChunks: Blob[] = [];
   let userSpeechEndedAt = "";
-  let taskCompletePending = false;
+  let outputAudioActive = false;
+  let taskCompleteCallId: string | null = null;
+  let praiseRequested = false;
+  let praiseResponseDone = false;
   let taskCompleteNotified = false;
   let taskCompleteTimerId: number | null = null;
 
@@ -305,38 +308,53 @@ export async function startIppoRealtimeConversation({
           message.item.name === "complete_task" &&
           typeof message.item.call_id === "string"
         ) {
-          taskCompletePending = true;
-          // 関数の結果をモデルへ返し、締めくくりのほめ言葉を音声で作ってもらう。
-          dataChannel.send(
-            JSON.stringify({
-              type: "conversation.item.create",
-              item: {
-                type: "function_call_output",
-                call_id: message.item.call_id,
-                output: JSON.stringify({ success: true }),
-              },
-            }),
-          );
-          dataChannel.send(
-            JSON.stringify({
-              type: "response.create",
-              response: {
-                output_modalities: ["audio"],
-              },
-            }),
-          );
+          // この時点では応答がまだ進行中。response.done を待ってから結果を返す。
+          // 以降はユーザーの相づちで新しい応答が始まらないよう、マイクは再開しない。
+          taskCompleteCallId = message.item.call_id;
+          setMicEnabled(false);
           scheduleTaskCompleteFallback(15000);
         }
+        if (message.type === "response.done" && taskCompleteCallId) {
+          if (!praiseRequested) {
+            praiseRequested = true;
+            // 関数の結果をモデルへ返し、締めくくりのほめ言葉を音声で作ってもらう。
+            dataChannel.send(
+              JSON.stringify({
+                type: "conversation.item.create",
+                item: {
+                  type: "function_call_output",
+                  call_id: taskCompleteCallId,
+                  output: JSON.stringify({ success: true }),
+                },
+              }),
+            );
+            dataChannel.send(
+              JSON.stringify({
+                type: "response.create",
+                response: {
+                  output_modalities: ["audio"],
+                },
+              }),
+            );
+            scheduleTaskCompleteFallback(15000);
+          } else if (!praiseResponseDone) {
+            praiseResponseDone = true;
+            // ほめ言葉の生成が終わった。再生も終わっていればここで完了へ。
+            if (!outputAudioActive) notifyTaskComplete();
+          }
+        }
         if (message.type === "output_audio_buffer.started") {
-          if (taskCompletePending) scheduleTaskCompleteFallback(15000);
+          outputAudioActive = true;
+          if (taskCompleteCallId) scheduleTaskCompleteFallback(15000);
           stopUserSpeechRecorder();
           setMicEnabled(false);
         }
         if (message.type === "output_audio_buffer.stopped") {
-          if (taskCompletePending) {
-            // ほめ言葉を言い終えた。マイクは再開せず、そのまま完了へ。
+          outputAudioActive = false;
+          if (praiseResponseDone) {
+            // ほめ言葉を言い終えた。そのまま完了へ。
             notifyTaskComplete();
-          } else {
+          } else if (!taskCompleteCallId) {
             setMicEnabled(true);
             startUserSpeechRecorder();
           }
