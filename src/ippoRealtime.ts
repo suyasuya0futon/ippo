@@ -57,7 +57,8 @@ async function functionErrorDetail(error: unknown): Promise<string> {
 function statusFromEventType(type: string): IppoRealtimeStatus | null {
   if (type === "input_audio_buffer.speech_started") return "listening";
   if (type === "input_audio_buffer.speech_stopped") return "thinking";
-  if (type === "response.output_audio.delta") return "speaking";
+  if (type === "output_audio_buffer.started") return "speaking";
+  if (type === "output_audio_buffer.stopped") return "listening";
   if (type === "error") return "error";
   return null;
 }
@@ -105,6 +106,12 @@ export async function startIppoRealtimeConversation({
     },
   });
   throwIfAborted();
+  const localAudioTracks = localStream.getAudioTracks();
+  const setMicEnabled = (enabled: boolean) => {
+    localAudioTracks.forEach((track) => {
+      track.enabled = enabled;
+    });
+  };
   const { data, error } = await supabase.functions.invoke<RealtimeSessionResponse>(
     "ippo-realtime-session",
     {
@@ -176,8 +183,11 @@ export async function startIppoRealtimeConversation({
     try {
       const message = JSON.parse(String(event.data)) as { type?: unknown; error?: { message?: string } };
       if (typeof message.type === "string") {
+        console.info("Realtime event", message.type);
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
+        if (message.type === "output_audio_buffer.started") setMicEnabled(false);
+        if (message.type === "output_audio_buffer.stopped") setMicEnabled(true);
       }
       if (message.type === "error") {
         onError(message.error?.message ?? "realtime_event_error");
