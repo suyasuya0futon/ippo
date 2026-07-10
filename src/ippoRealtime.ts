@@ -43,9 +43,6 @@ function statusFromEventType(type: string): IppoRealtimeStatus | null {
   if (type === "input_audio_buffer.speech_started") return "listening";
   if (type === "input_audio_buffer.speech_stopped") return "thinking";
   if (type === "response.output_audio.delta") return "speaking";
-  if (type === "response.output_audio.done") return "listening";
-  if (type === "response.done") return "listening";
-  if (type === "session.created") return "listening";
   if (type === "error") return "error";
   return null;
 }
@@ -93,6 +90,27 @@ export async function startIppoRealtimeConversation({
     },
   });
   throwIfAborted();
+  const localAudioTracks = localStream.getAudioTracks();
+  let micResumeTimerId: number | null = null;
+  const setMicEnabled = (enabled: boolean) => {
+    localAudioTracks.forEach((track) => {
+      track.enabled = enabled;
+    });
+  };
+  const muteMicDuringAssistantSpeech = () => {
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
+    micResumeTimerId = null;
+    setMicEnabled(false);
+  };
+  const resumeMicAfterAssistantSpeech = () => {
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
+    // 音声ストリームの最後が端末で再生され切るまで少し待ってから聞き始める。
+    micResumeTimerId = window.setTimeout(() => {
+      setMicEnabled(true);
+      micResumeTimerId = null;
+      onStatus("listening");
+    }, 650);
+  };
 
   const { data, error } = await supabase.functions.invoke<RealtimeSessionResponse>(
     "ippo-realtime-session",
@@ -129,6 +147,7 @@ export async function startIppoRealtimeConversation({
     if (stopped) return;
     stopped = true;
     if (timerId !== null) window.clearTimeout(timerId);
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
     stopLocalStream();
     pc.getSenders().forEach((sender) => sender.track?.stop());
     pc.close();
@@ -151,6 +170,8 @@ export async function startIppoRealtimeConversation({
   const dataChannel = pc.createDataChannel("oai-events");
   dataChannel.onopen = () => {
     onStatus("speaking");
+    // スピーカー音を話しかけた声と誤認して応答が途切れないよう、発話中はマイクを止める。
+    muteMicDuringAssistantSpeech();
     dataChannel.send(
       JSON.stringify({
         type: "response.create",
@@ -166,6 +187,8 @@ export async function startIppoRealtimeConversation({
       if (typeof message.type === "string") {
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
+        if (message.type === "response.output_audio.delta") muteMicDuringAssistantSpeech();
+        if (message.type === "response.done") resumeMicAfterAssistantSpeech();
       }
       if (message.type === "error") {
         onError(message.error?.message ?? "realtime_event_error");
