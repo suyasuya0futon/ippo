@@ -41,6 +41,7 @@ function statusFromEventType(type: string): IppoRealtimeStatus | null {
   if (type === "input_audio_buffer.speech_started") return "listening";
   if (type === "input_audio_buffer.speech_stopped") return "thinking";
   if (type === "response.audio.delta") return "speaking";
+  if (type === "response.audio.done") return "listening";
   if (type === "response.done") return "listening";
   if (type === "session.created") return "listening";
   if (type === "error") return "error";
@@ -64,7 +65,34 @@ export async function startIppoRealtimeConversation({
 }: StartRealtimeOptions): Promise<IppoRealtimeConversation> {
   onStatus("connecting");
 
-  const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const localStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+  const localAudioTracks = localStream.getAudioTracks();
+  let micResumeTimerId: number | null = null;
+
+  const setMicEnabled = (enabled: boolean) => {
+    localAudioTracks.forEach((track) => {
+      track.enabled = enabled;
+    });
+  };
+
+  const muteMicBriefly = () => {
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
+    setMicEnabled(false);
+  };
+
+  const resumeMicSoon = () => {
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
+    micResumeTimerId = window.setTimeout(() => {
+      setMicEnabled(true);
+      micResumeTimerId = null;
+    }, 450);
+  };
 
   const { data, error } = await supabase.functions.invoke<RealtimeSessionResponse>(
     "ippo-realtime-session",
@@ -100,6 +128,7 @@ export async function startIppoRealtimeConversation({
     if (stopped) return;
     stopped = true;
     if (timerId !== null) window.clearTimeout(timerId);
+    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
     localStream.getTracks().forEach((track) => track.stop());
     pc.getSenders().forEach((sender) => sender.track?.stop());
     pc.close();
@@ -135,6 +164,8 @@ export async function startIppoRealtimeConversation({
       if (typeof message.type === "string") {
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
+        if (message.type === "response.audio.delta") muteMicBriefly();
+        if (message.type === "response.audio.done" || message.type === "response.done") resumeMicSoon();
       }
       if (message.type === "error") {
         onError(message.error?.message ?? "realtime_event_error");
