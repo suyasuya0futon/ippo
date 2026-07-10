@@ -39,6 +39,12 @@ import type { Bucket, DB, Item } from "../types";
 import { TagChip } from "../components/TagChip";
 import ItemInput from "../components/ItemInput";
 import { requestIppoReply, type IppoMessage } from "../ippoAi";
+import {
+  IPPO_AI_PROVIDER,
+  startIppoRealtimeConversation,
+  type IppoRealtimeConversation,
+  type IppoRealtimeStatus,
+} from "../ippoRealtime";
 
 const FUTURE_BUCKETS = ["tomorrow", "soon", "someday"] as const;
 type FutureBucket = (typeof FUTURE_BUCKETS)[number];
@@ -126,6 +132,15 @@ function AiIcon() {
       <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
     </svg>
   );
+}
+
+function ippoVoiceStatusText(status: IppoRealtimeStatus, loading: boolean) {
+  if (loading || status === "connecting") return "音声AIにつないでいます";
+  if (status === "speaking") return "AIが話しています";
+  if (status === "listening") return "話しかけてください";
+  if (status === "thinking") return "AIが考えています";
+  if (status === "error") return "音声AIにつながりませんでした";
+  return "音声会話は終了しました";
 }
 
 // 入力UIの外側をタップしたら閉じる（編集・タスク追加・ステップ追加で共通）。
@@ -654,6 +669,8 @@ function TaskRow({
   const [ippoText, setIppoText] = useState("");
   const [ippoLoading, setIppoLoading] = useState(false);
   const [ippoMessages, setIppoMessages] = useState<IppoMessage[]>([]);
+  const [ippoVoiceStatus, setIppoVoiceStatus] = useState<IppoRealtimeStatus>("ended");
+  const [ippoVoiceError, setIppoVoiceError] = useState("");
   const [completing, setCompleting] = useState(false);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
@@ -661,6 +678,8 @@ function TaskRow({
   const stepAddRef = useRef<HTMLDivElement>(null);
   const ippoRef = useRef<HTMLDivElement>(null);
   const completeTimerRef = useRef<number | null>(null);
+  const realtimeConversationRef = useRef<IppoRealtimeConversation | null>(null);
+  const useOpenAiRealtime = IPPO_AI_PROVIDER === "openai-realtime";
 
   const isHabit = item.recurring;
   const isFlag = !isHabit; // 移動ボタン(⏳/🌱)はフラグタスク（＝一度きり）に出す
@@ -673,13 +692,14 @@ function TaskRow({
   // 外側を触ったら閉じる（編集パネル／ステップ追加欄）。キャンセルボタン不要で揃える。
   useDismissOnOutside(editRef, editing, () => setEditing(false));
   useDismissOnOutside(stepAddRef, adding, () => setAdding(false), ".step-start");
-  useDismissOnOutside(ippoRef, ippoOpen, () => setIppoOpen(false), ".ippo-start");
+  useDismissOnOutside(ippoRef, ippoOpen, closeIppo, ".ippo-start");
 
   useEffect(
     () => () => {
       if (completeTimerRef.current !== null) {
         window.clearTimeout(completeTimerRef.current);
       }
+      realtimeConversationRef.current?.stop();
     },
     [],
   );
@@ -718,8 +738,43 @@ function TaskRow({
 
   function openIppo() {
     setIppoOpen(true);
+    if (useOpenAiRealtime) {
+      if (!realtimeConversationRef.current && !ippoLoading) {
+        void startIppoVoice();
+      }
+      return;
+    }
     if (ippoMessages.length === 0 && !ippoLoading) {
       void requestInitialIppoReply();
+    }
+  }
+
+  function closeIppo() {
+    realtimeConversationRef.current?.stop();
+    realtimeConversationRef.current = null;
+    setIppoVoiceStatus("ended");
+    setIppoOpen(false);
+  }
+
+  async function startIppoVoice() {
+    setIppoLoading(true);
+    setIppoVoiceError("");
+    try {
+      realtimeConversationRef.current = await startIppoRealtimeConversation({
+        taskTitle: item.title,
+        taskTag: item.tag,
+        onStatus: setIppoVoiceStatus,
+        onError: (message) => {
+          console.error("Realtime イベントエラー", message);
+          setIppoVoiceError("音声AIでエラーが起きました。いったん閉じて、もう一度試してください。");
+        },
+      });
+    } catch (error) {
+      console.error("Realtime 接続失敗", error);
+      setIppoVoiceStatus("error");
+      setIppoVoiceError("今は音声AIにつながりませんでした。少し時間を置いて、もう一度試してください。");
+    } finally {
+      setIppoLoading(false);
     }
   }
 
@@ -959,50 +1014,69 @@ function TaskRow({
           <div className="ippo-chat" ref={ippoRef}>
             <button
               className="ippo-chat__close"
-              onClick={() => setIppoOpen(false)}
+              onClick={closeIppo}
               aria-label="閉じる"
               title="閉じる"
             >
               <CloseIcon />
             </button>
-            {(ippoLoading || ippoMessages.some((message) => message.role === "ippo")) && (
-              <div className="ippo-chat__bubble ippo-chat__bubble--ippo">
-                {ippoLoading ? (
-                  <span className="ippo-chat__loading" aria-label="読み込み中">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                ) : (
-                  ippoMessages.findLast((message) => message.role === "ippo")?.text
-                )}
+            {useOpenAiRealtime ? (
+              <div className="ippo-chat__voice">
+                <div className={`ippo-chat__voice-dot ippo-chat__voice-dot--${ippoVoiceStatus}`} />
+                <div className="ippo-chat__voice-main">
+                  <div className="ippo-chat__voice-status">
+                    {ippoVoiceError || ippoVoiceStatusText(ippoVoiceStatus, ippoLoading)}
+                  </div>
+                  <button
+                    className="btn btn--ghost ippo-chat__voice-stop"
+                    onClick={closeIppo}
+                  >
+                    終了
+                  </button>
+                </div>
               </div>
+            ) : (
+              <>
+                {(ippoLoading || ippoMessages.some((message) => message.role === "ippo")) && (
+                  <div className="ippo-chat__bubble ippo-chat__bubble--ippo">
+                    {ippoLoading ? (
+                      <span className="ippo-chat__loading" aria-label="読み込み中">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                    ) : (
+                      ippoMessages.findLast((message) => message.role === "ippo")?.text
+                    )}
+                  </div>
+                )}
+                <div className="ippo-chat__input">
+                  <textarea
+                    placeholder="質問してください"
+                    value={ippoText}
+                    autoFocus
+                    disabled={ippoLoading}
+                    rows={2}
+                    onChange={(e) => setIppoText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        submitIppoMessage();
+                      }
+                    }}
+                  />
+                  <button
+                    className="icon-btn icon-btn--accent"
+                    style={{ flexShrink: 0 }}
+                    onClick={submitIppoMessage}
+                    disabled={ippoLoading}
+                    aria-label="送る"
+                  >
+                    <CheckIcon />
+                  </button>
+                </div>
+              </>
             )}
-            <div className="ippo-chat__input">
-              <textarea
-                placeholder="質問してください"
-                value={ippoText}
-                autoFocus
-                disabled={ippoLoading}
-                rows={2}
-                onChange={(e) => setIppoText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submitIppoMessage();
-                  }
-                }}
-              />
-              <button
-                className="icon-btn icon-btn--accent"
-                style={{ flexShrink: 0 }}
-                onClick={submitIppoMessage}
-                disabled={ippoLoading}
-                aria-label="送る"
-              >
-                <CheckIcon />
-              </button>
-            </div>
           </div>
         )}
     </div>

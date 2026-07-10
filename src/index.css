@@ -584,6 +584,61 @@ select {
   resize: vertical;
 }
 
+.ippo-chat__voice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 4px 24px 4px 2px;
+}
+
+.ippo-chat__voice-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #9fb5c3;
+  flex-shrink: 0;
+}
+
+.ippo-chat__voice-dot--connecting,
+.ippo-chat__voice-dot--thinking {
+  animation: ippo-voice-pulse 1s infinite ease-in-out;
+}
+
+.ippo-chat__voice-dot--speaking {
+  background: #5b9fbd;
+  animation: ippo-voice-pulse 0.7s infinite ease-in-out;
+}
+
+.ippo-chat__voice-dot--listening {
+  background: #6f9f86;
+}
+
+.ippo-chat__voice-dot--error {
+  background: #c97a7a;
+}
+
+.ippo-chat__voice-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ippo-chat__voice-status {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ippo-chat__voice-stop {
+  flex-shrink: 0;
+  padding: 2px 4px;
+  font-size: 13px;
+}
+
 .ippo-chat__loading {
   display: inline-flex;
   align-items: center;
@@ -617,6 +672,18 @@ select {
   40% {
     opacity: 1;
     transform: translateY(-3px);
+  }
+}
+
+@keyframes ippo-voice-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
   }
 }
 
