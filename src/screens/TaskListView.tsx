@@ -679,6 +679,8 @@ function TaskRow({
   const ippoRef = useRef<HTMLDivElement>(null);
   const completeTimerRef = useRef<number | null>(null);
   const realtimeConversationRef = useRef<IppoRealtimeConversation | null>(null);
+  const realtimeStartAbortRef = useRef<AbortController | null>(null);
+  const realtimeStartIdRef = useRef(0);
   const useOpenAiRealtime = IPPO_AI_PROVIDER === "openai-realtime";
 
   const isHabit = item.recurring;
@@ -699,6 +701,8 @@ function TaskRow({
       if (completeTimerRef.current !== null) {
         window.clearTimeout(completeTimerRef.current);
       }
+      realtimeStartIdRef.current += 1;
+      realtimeStartAbortRef.current?.abort();
       realtimeConversationRef.current?.stop();
     },
     [],
@@ -750,6 +754,9 @@ function TaskRow({
   }
 
   function closeIppo() {
+    realtimeStartIdRef.current += 1;
+    realtimeStartAbortRef.current?.abort();
+    realtimeStartAbortRef.current = null;
     realtimeConversationRef.current?.stop();
     realtimeConversationRef.current = null;
     setIppoVoiceStatus("ended");
@@ -757,20 +764,30 @@ function TaskRow({
   }
 
   async function startIppoVoice() {
+    const startId = ++realtimeStartIdRef.current;
+    const abortController = new AbortController();
+    realtimeStartAbortRef.current = abortController;
     setIppoLoading(true);
     setIppoVoiceError("");
     try {
-      realtimeConversationRef.current = await startIppoRealtimeConversation({
+      const conversation = await startIppoRealtimeConversation({
         taskTitle: item.title,
         taskTag: item.tag,
         steps,
+        signal: abortController.signal,
         onStatus: setIppoVoiceStatus,
         onError: (message) => {
           console.error("Realtime イベントエラー", message);
           setIppoVoiceError("音声AIでエラーが起きました。いったん閉じて、もう一度試してください。");
         },
       });
+      if (realtimeStartIdRef.current !== startId || abortController.signal.aborted) {
+        conversation.stop();
+        return;
+      }
+      realtimeConversationRef.current = conversation;
     } catch (error) {
+      if (abortController.signal.aborted || realtimeStartIdRef.current !== startId) return;
       console.error("Realtime 接続失敗", error);
       setIppoVoiceStatus("error");
       const detail = error instanceof Error ? error.message : "";
@@ -780,7 +797,10 @@ function TaskRow({
           : "今は音声AIにつながりませんでした。少し時間を置いて、もう一度試してください。",
       );
     } finally {
-      setIppoLoading(false);
+      if (realtimeStartAbortRef.current === abortController) {
+        realtimeStartAbortRef.current = null;
+      }
+      if (realtimeStartIdRef.current === startId) setIppoLoading(false);
     }
   }
 

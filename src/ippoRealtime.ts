@@ -28,6 +28,7 @@ type StartRealtimeOptions = {
   taskTitle: string;
   taskTag?: string | null;
   steps?: Array<{ title: string; done: boolean }>;
+  signal?: AbortSignal;
   onStatus: (status: IppoRealtimeStatus) => void;
   onError: (message: string) => void;
 };
@@ -41,8 +42,8 @@ function errorMessage(error: unknown): string {
 function statusFromEventType(type: string): IppoRealtimeStatus | null {
   if (type === "input_audio_buffer.speech_started") return "listening";
   if (type === "input_audio_buffer.speech_stopped") return "thinking";
-  if (type === "response.audio.delta") return "speaking";
-  if (type === "response.audio.done") return "listening";
+  if (type === "response.output_audio.delta") return "speaking";
+  if (type === "response.output_audio.done") return "listening";
   if (type === "response.done") return "listening";
   if (type === "session.created") return "listening";
   if (type === "error") return "error";
@@ -62,39 +63,36 @@ export async function startIppoRealtimeConversation({
   taskTitle,
   taskTag,
   steps,
+  signal,
   onStatus,
   onError,
 }: StartRealtimeOptions): Promise<IppoRealtimeConversation> {
   onStatus("connecting");
 
-  const localStream = await navigator.mediaDevices.getUserMedia({
+  let localStream: MediaStream | null = null;
+  let stopConversation: (() => void) | null = null;
+  const abortError = () => new DOMException("Realtime conversation was cancelled", "AbortError");
+  const stopLocalStream = () => localStream?.getTracks().forEach((track) => track.stop());
+  const handleAbort = () => {
+    stopConversation?.();
+    stopLocalStream();
+  };
+  const throwIfAborted = () => {
+    if (signal?.aborted) {
+      handleAbort();
+      throw abortError();
+    }
+  };
+  signal?.addEventListener("abort", handleAbort, { once: true });
+
+  localStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,
     },
   });
-  const localAudioTracks = localStream.getAudioTracks();
-  let micResumeTimerId: number | null = null;
-
-  const setMicEnabled = (enabled: boolean) => {
-    localAudioTracks.forEach((track) => {
-      track.enabled = enabled;
-    });
-  };
-
-  const muteMicBriefly = () => {
-    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
-    setMicEnabled(false);
-  };
-
-  const resumeMicSoon = () => {
-    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
-    micResumeTimerId = window.setTimeout(() => {
-      setMicEnabled(true);
-      micResumeTimerId = null;
-    }, 450);
-  };
+  throwIfAborted();
 
   const { data, error } = await supabase.functions.invoke<RealtimeSessionResponse>(
     "ippo-realtime-session",
@@ -102,21 +100,22 @@ export async function startIppoRealtimeConversation({
       body: { taskTitle, taskTag, steps },
     },
   );
+  throwIfAborted();
 
   if (error) {
     console.error("Realtime セッション作成失敗", error);
-    localStream.getTracks().forEach((track) => track.stop());
+    stopLocalStream();
     throw new Error(`realtime_session_request_failed: ${errorMessage(error)}`);
   }
   if (data?.error) {
     console.error("Realtime セッション作成エラー", data.error);
-    localStream.getTracks().forEach((track) => track.stop());
+    stopLocalStream();
     throw new Error(data.error);
   }
 
   const clientSecret = data?.clientSecret;
   if (!clientSecret) {
-    localStream.getTracks().forEach((track) => track.stop());
+    stopLocalStream();
     throw new Error("missing_realtime_client_secret");
   }
 
@@ -130,14 +129,15 @@ export async function startIppoRealtimeConversation({
     if (stopped) return;
     stopped = true;
     if (timerId !== null) window.clearTimeout(timerId);
-    if (micResumeTimerId !== null) window.clearTimeout(micResumeTimerId);
-    localStream.getTracks().forEach((track) => track.stop());
+    stopLocalStream();
     pc.getSenders().forEach((sender) => sender.track?.stop());
     pc.close();
     audio.srcObject = null;
     audio.remove();
+    signal?.removeEventListener("abort", handleAbort);
     onStatus("ended");
   };
+  stopConversation = stop;
 
   pc.ontrack = (event) => {
     audio.srcObject = event.streams[0];
@@ -166,11 +166,10 @@ export async function startIppoRealtimeConversation({
       if (typeof message.type === "string") {
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
-        if (message.type === "response.audio.delta") muteMicBriefly();
-        if (message.type === "response.audio.done" || message.type === "response.done") resumeMicSoon();
       }
       if (message.type === "error") {
         onError(message.error?.message ?? "realtime_event_error");
+        stop();
       }
     } catch {
       // Ignore non-JSON diagnostic frames.
@@ -179,10 +178,15 @@ export async function startIppoRealtimeConversation({
   dataChannel.onerror = () => {
     onStatus("error");
     onError("realtime_data_channel_error");
+    stop();
   };
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
+  if (signal?.aborted) {
+    stop();
+    throw abortError();
+  }
 
   let sdpResponse: Response;
   try {
@@ -207,10 +211,20 @@ export async function startIppoRealtimeConversation({
     throw new Error(`realtime_sdp_failed: ${sdpResponse.status} ${detail.slice(0, 180)}`);
   }
 
+  if (signal?.aborted) {
+    stop();
+    throw abortError();
+  }
+
   await pc.setRemoteDescription({
     type: "answer",
     sdp: await sdpResponse.text(),
   });
+
+  if (signal?.aborted) {
+    stop();
+    throw abortError();
+  }
 
   timerId = window.setTimeout(stop, maxSeconds * 1000);
   return { stop };
