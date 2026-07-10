@@ -671,6 +671,7 @@ function TaskRow({
   const [ippoMessages, setIppoMessages] = useState<IppoMessage[]>([]);
   const [ippoVoiceStatus, setIppoVoiceStatus] = useState<IppoRealtimeStatus>("ended");
   const [ippoVoiceError, setIppoVoiceError] = useState("");
+  const [ippoVoiceTranscript, setIppoVoiceTranscript] = useState("");
   const [completing, setCompleting] = useState(false);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
@@ -760,6 +761,7 @@ function TaskRow({
     realtimeConversationRef.current?.stop();
     realtimeConversationRef.current = null;
     setIppoVoiceStatus("ended");
+    setIppoVoiceTranscript("");
     setIppoOpen(false);
   }
 
@@ -769,6 +771,7 @@ function TaskRow({
     realtimeStartAbortRef.current = abortController;
     setIppoLoading(true);
     setIppoVoiceError("");
+    setIppoVoiceTranscript("");
     try {
       const conversation = await startIppoRealtimeConversation({
         taskTitle: item.title,
@@ -780,6 +783,8 @@ function TaskRow({
           console.error("Realtime イベントエラー", message);
           setIppoVoiceError("音声AIでエラーが起きました。いったん閉じて、もう一度試してください。");
         },
+        onAssistantSpeechStart: () => setIppoVoiceTranscript(""),
+        onTranscript: (text) => setIppoVoiceTranscript((transcript) => transcript + text),
       });
       if (realtimeStartIdRef.current !== startId || abortController.signal.aborted) {
         conversation.stop();
@@ -1047,20 +1052,25 @@ function TaskRow({
               <CloseIcon />
             </button>
             {useOpenAiRealtime ? (
-              <div className="ippo-chat__voice">
-                <div className={`ippo-chat__voice-dot ippo-chat__voice-dot--${ippoVoiceStatus}`} />
-                <div className="ippo-chat__voice-main">
-                  <div className="ippo-chat__voice-status">
-                    {ippoVoiceError || ippoVoiceStatusText(ippoVoiceStatus, ippoLoading)}
+              <>
+                <div className="ippo-chat__voice">
+                  <div className={`ippo-chat__voice-dot ippo-chat__voice-dot--${ippoVoiceStatus}`} />
+                  <div className="ippo-chat__voice-main">
+                    <div className="ippo-chat__voice-status">
+                      {ippoVoiceError || ippoVoiceStatusText(ippoVoiceStatus, ippoLoading)}
+                    </div>
+                    <button
+                      className="btn btn--ghost ippo-chat__voice-stop"
+                      onClick={closeIppo}
+                    >
+                      終了
+                    </button>
                   </div>
-                  <button
-                    className="btn btn--ghost ippo-chat__voice-stop"
-                    onClick={closeIppo}
-                  >
-                    終了
-                  </button>
                 </div>
-              </div>
+                {ippoVoiceTranscript && (
+                  <div className="ippo-chat__bubble ippo-chat__bubble--ippo">{ippoVoiceTranscript}</div>
+                )}
+              </>
             ) : (
               <>
                 {(ippoLoading || ippoMessages.some((message) => message.role === "ippo")) && (
