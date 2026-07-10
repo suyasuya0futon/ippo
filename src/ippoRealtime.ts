@@ -306,15 +306,10 @@ export async function startIppoRealtimeConversation({
     }
   };
   dataChannel.onopen = () => {
-    onStatus("speaking");
-    dataChannel.send(
-      JSON.stringify({
-        type: "response.create",
-        response: {
-          output_modalities: ["audio"],
-        },
-      }),
-    );
+    // 接続直後はAIから話し始めず、ユーザーの最初の発話を待つ。
+    // 最初の発話も会話ログに残せるよう、ここから録音を始める。
+    onStatus("listening");
+    startUserSpeechRecorder();
   };
   dataChannel.onmessage = (event) => {
     try {
