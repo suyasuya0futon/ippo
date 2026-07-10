@@ -763,6 +763,7 @@ function TaskRow({
       realtimeConversationRef.current = await startIppoRealtimeConversation({
         taskTitle: item.title,
         taskTag: item.tag,
+        steps,
         onStatus: setIppoVoiceStatus,
         onError: (message) => {
           console.error("Realtime イベントエラー", message);
@@ -789,7 +790,7 @@ function TaskRow({
     setIppoMessages(nextMessages);
     setIppoLoading(true);
     try {
-      const reply = await requestIppoReply(item.title, nextMessages, item.tag);
+      const reply = await requestIppoReply(item.title, nextMessages, item.tag, steps);
       setIppoMessages((messages) => [...messages, { role: "ippo", text: reply }]);
     } catch {
       setIppoMessages((messages) => [

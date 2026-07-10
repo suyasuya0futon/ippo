@@ -27,6 +27,7 @@ export type IppoRealtimeConversation = {
 type StartRealtimeOptions = {
   taskTitle: string;
   taskTag?: string | null;
+  steps?: Array<{ title: string; done: boolean }>;
   onStatus: (status: IppoRealtimeStatus) => void;
   onError: (message: string) => void;
 };
@@ -60,6 +61,7 @@ function createRemoteAudioElement() {
 export async function startIppoRealtimeConversation({
   taskTitle,
   taskTag,
+  steps,
   onStatus,
   onError,
 }: StartRealtimeOptions): Promise<IppoRealtimeConversation> {
@@ -97,7 +99,7 @@ export async function startIppoRealtimeConversation({
   const { data, error } = await supabase.functions.invoke<RealtimeSessionResponse>(
     "ippo-realtime-session",
     {
-      body: { taskTitle, taskTag },
+      body: { taskTitle, taskTag, steps },
     },
   );
 

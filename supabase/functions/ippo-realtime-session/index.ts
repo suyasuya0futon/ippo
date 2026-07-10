@@ -11,6 +11,7 @@ type AuthUser = {
 type RequestBody = {
   taskTitle?: string;
   taskTag?: string | null;
+  steps?: Array<{ title?: unknown; done?: unknown }>;
 };
 
 type UsageRow = {
@@ -150,7 +151,11 @@ async function insertUsageRow(
   }
 }
 
-function buildInstructions(taskTitle: string, taskTag: string) {
+function buildInstructions(
+  taskTitle: string,
+  taskTag: string,
+  steps: Array<{ title: string; done: boolean }>,
+) {
   const targetLines = [`対象タスク: ${taskTitle}`];
   if (taskTag) targetLines.push(`対象タグ: #${taskTag}`);
   if (taskTag === "裁縫") targetLines.push("タグ補足: #裁縫 の作業は基本的にミシンを使う前提で考える。");
@@ -159,6 +164,9 @@ function buildInstructions(taskTitle: string, taskTag: string) {
       "タグ補足: #買物 では在庫確認やメモ追加ではなく、買う店、買うタイミング、ネット注文、カートに入れるなど購入に進む入口を提案する。",
     );
   }
+  const stepLines = steps.length
+    ? steps.map((step) => `- [${step.done ? "完了" : "未完了"}] ${step.title}`)
+    : ["（まだ登録されていません）"];
 
   return [
     "あなたはタスクを進めるためのAI伴走者です。",
@@ -169,7 +177,20 @@ function buildInstructions(taskTitle: string, taskTag: string) {
     "返答は日本語で、自然な会話調。長くても50文字程度。",
     "接続直後は、対象タスクに合わせて最初の一歩をあなたから話しかける。",
     ...targetLines,
+    "このタスクに登録済みの小さな一歩:",
+    ...stepLines,
+    "登録済みの未完了一歩があれば、そのうち次に取りかかるものを優先する。",
   ].join("\n");
+}
+
+function sanitizeSteps(steps: Array<{ title?: unknown; done?: unknown }>) {
+  return steps
+    .map((step) => ({
+      title: String(step.title ?? "").trim().slice(0, 200),
+      done: step.done === true,
+    }))
+    .filter((step) => step.title.length > 0)
+    .slice(0, 20);
 }
 
 Deno.serve(async (req) => {
@@ -199,6 +220,7 @@ Deno.serve(async (req) => {
   if (!taskTitle) return jsonResponse({ error: "missing_task_title" }, 400);
 
   const taskTag = String(body.taskTag ?? "").trim().replace(/^[#＃]/, "").slice(0, 80);
+  const steps = sanitizeSteps(Array.isArray(body.steps) ? body.steps : []);
   const model = Deno.env.get("OPENAI_REALTIME_MODEL") ?? "gpt-realtime-2.1-mini";
   const voice = Deno.env.get("OPENAI_REALTIME_VOICE") ?? "marin";
   const maxSeconds = Math.max(15, Math.floor(readNumberEnv("OPENAI_REALTIME_MAX_SECONDS", 180)));
@@ -248,7 +270,7 @@ Deno.serve(async (req) => {
         session: {
           type: "realtime",
           model,
-          instructions: buildInstructions(taskTitle, taskTag),
+          instructions: buildInstructions(taskTitle, taskTag, steps),
           output_modalities: ["audio"],
           max_output_tokens: 200,
           audio: {

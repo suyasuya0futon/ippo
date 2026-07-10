@@ -9,10 +9,16 @@ type IppoMessage = {
   text: string;
 };
 
+type IppoStep = {
+  title?: unknown;
+  done?: unknown;
+};
+
 type RequestBody = {
   taskTitle?: string;
   taskTag?: string | null;
   messages?: IppoMessage[];
+  steps?: IppoStep[];
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -63,6 +69,16 @@ function sanitizeMessages(messages: IppoMessage[]): IppoMessage[] {
     .slice(-8);
 }
 
+function sanitizeSteps(steps: IppoStep[]): Array<{ title: string; done: boolean }> {
+  return steps
+    .map((step) => ({
+      title: String(step.title ?? "").trim().slice(0, 200),
+      done: step.done === true,
+    }))
+    .filter((step) => step.title.length > 0)
+    .slice(0, 20);
+}
+
 function extractText(data: Record<string, unknown>): string {
   const direct = data.output_text;
   if (typeof direct === "string" && direct.trim()) return direct.trim();
@@ -95,7 +111,12 @@ function geminiErrorDetail(data: Record<string, unknown>): string {
   return parts.join(": ").slice(0, 500) || "unknown_gemini_error";
 }
 
-function buildInput(taskTitle: string, taskTag: string, messages: IppoMessage[]) {
+function buildInput(
+  taskTitle: string,
+  taskTag: string,
+  messages: IppoMessage[],
+  steps: Array<{ title: string; done: boolean }>,
+) {
   const conversation = messages
     .map((message) => `${message.role === "user" ? "ユーザー" : "AI"}: ${message.text}`)
     .join("\n");
@@ -111,6 +132,9 @@ function buildInput(taskTitle: string, taskTag: string, messages: IppoMessage[])
       ].join("\n")
     );
   }
+  const stepLines = steps.length
+    ? steps.map((step) => `- [${step.done ? "完了" : "未完了"}] ${step.title}`)
+    : ["（まだ登録されていません）"];
 
   return [
     "あなたはタスクを進めるためのAI相談相手です。",
@@ -121,6 +145,10 @@ function buildInput(taskTitle: string, taskTag: string, messages: IppoMessage[])
     "タスクを保存するステップに分解せず、今どこで詰まっているかを聞き、次に動ける小さな入口を一緒に探す。",
     "返答は日本語で、最大100文字程度。最後は自然な短い問いで終える。",
     ...targetLines,
+    "",
+    "このタスクに登録済みの小さな一歩:",
+    ...stepLines,
+    "登録済みの一歩を踏まえ、未完了ならまず次に取りかかる一歩を優先する。",
     "",
     "これまでの会話:",
     conversation || "まだ会話はありません。",
@@ -151,6 +179,7 @@ Deno.serve(async (req) => {
 
   const taskTag = String(body.taskTag ?? "").trim().replace(/^[#＃]/, "").slice(0, 80);
   const messages = sanitizeMessages(Array.isArray(body.messages) ? body.messages : []);
+  const steps = sanitizeSteps(Array.isArray(body.steps) ? body.steps : []);
   const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.1-flash-lite";
 
   try {
@@ -162,7 +191,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model,
-        input: buildInput(taskTitle, taskTag, messages),
+        input: buildInput(taskTitle, taskTag, messages, steps),
       }),
     });
 

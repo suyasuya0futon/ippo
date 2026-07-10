@@ -5,6 +5,11 @@ export type IppoMessage = {
   text: string;
 };
 
+export type IppoStep = {
+  title: string;
+  done: boolean;
+};
+
 type IppoChatResponse = {
   text?: string;
   error?: string;
@@ -13,10 +18,11 @@ type IppoChatResponse = {
 export async function requestIppoReply(
   taskTitle: string,
   messages: IppoMessage[],
-  taskTag?: string | null
+  taskTag?: string | null,
+  steps: IppoStep[] = [],
 ): Promise<string> {
   const { data, error } = await supabase.functions.invoke<IppoChatResponse>("ippo-chat", {
-    body: { taskTitle, taskTag, messages },
+    body: { taskTitle, taskTag, messages, steps },
   });
 
   if (error) {
