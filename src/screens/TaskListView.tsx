@@ -47,6 +47,7 @@ import {
   type IppoRealtimeStatus,
 } from "../ippoRealtime";
 import {
+  deleteIppoConversationMessages,
   fetchIppoConversationMessages,
   insertIppoConversationMessage,
 } from "../db";
@@ -145,6 +146,16 @@ function HistoryIcon() {
       <path d="M3 12a9 9 0 1 0 3-6.7" />
       <path d="M3 4v5h5" />
       <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3" />
     </svg>
   );
 }
@@ -689,6 +700,10 @@ function TaskRow({
   const [ippoVoiceTranscript, setIppoVoiceTranscript] = useState("");
   const [ippoVoiceMessages, setIppoVoiceMessages] = useState<IppoConversationMessage[]>([]);
   const [ippoVoiceHistoryOpen, setIppoVoiceHistoryOpen] = useState(false);
+  // 音声モードのON/OFF。開いた直後はテキストで、🎤を押したら音声になる。
+  const [ippoVoiceOn, setIppoVoiceOn] = useState(false);
+  // ログ削除の押し間違い防止（1回目で確認表示、時間が経つと解除）
+  const [ippoClearArmed, setIppoClearArmed] = useState(false);
   const [completing, setCompleting] = useState(false);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
@@ -696,6 +711,8 @@ function TaskRow({
   const stepAddRef = useRef<HTMLDivElement>(null);
   const ippoRef = useRef<HTMLDivElement>(null);
   const completeTimerRef = useRef<number | null>(null);
+  const clearArmTimerRef = useRef<number | null>(null);
+  const ippoPrepareIdRef = useRef(0);
   const realtimeConversationRef = useRef<IppoRealtimeConversation | null>(null);
   const realtimeStartAbortRef = useRef<AbortController | null>(null);
   const realtimeStartIdRef = useRef(0);
@@ -719,6 +736,10 @@ function TaskRow({
       if (completeTimerRef.current !== null) {
         window.clearTimeout(completeTimerRef.current);
       }
+      if (clearArmTimerRef.current !== null) {
+        window.clearTimeout(clearArmTimerRef.current);
+      }
+      ippoPrepareIdRef.current += 1;
       realtimeStartIdRef.current += 1;
       realtimeStartAbortRef.current?.abort();
       realtimeConversationRef.current?.stop();
@@ -760,28 +781,91 @@ function TaskRow({
 
   function openIppo() {
     setIppoOpen(true);
-    if (useOpenAiRealtime) {
-      setIppoVoiceHistoryOpen(false);
-      if (!realtimeConversationRef.current && !ippoLoading) {
-        void startIppoVoice();
+    setIppoVoiceHistoryOpen(false);
+    void prepareIppoChat();
+  }
+
+  // 保存済みの会話ログを読み込み、テキストAIにも文脈として引き継ぐ。
+  // ログが何もなければ、これまで通りAIから最初のひとことをもらう。
+  async function prepareIppoChat() {
+    const prepareId = ++ippoPrepareIdRef.current;
+    setIppoLoading(true);
+    try {
+      const saved = await fetchIppoConversationMessages(item.id);
+      if (ippoPrepareIdRef.current !== prepareId) return;
+
+      setIppoVoiceMessages(saved);
+      if (saved.length > 0) {
+        const seeded: IppoMessage[] = saved
+          .slice(-20)
+          .map((message) => ({ role: message.role === "assistant" ? "ippo" : "user", text: message.text }));
+        setIppoMessages(seeded);
+        return;
       }
-      return;
-    }
-    if (ippoMessages.length === 0 && !ippoLoading) {
-      void requestInitialIppoReply();
+
+      // 初回の呼びかけはAI自身のあいさつ。架空のユーザー発言としてログには残さない。
+      const reply = await requestIppoReply(item.title, [], item.tag, steps);
+      if (ippoPrepareIdRef.current !== prepareId) return;
+      setIppoMessages([{ role: "ippo", text: reply }]);
+      saveIppoLogMessage("assistant", reply);
+    } catch {
+      if (ippoPrepareIdRef.current !== prepareId) return;
+      setIppoMessages([
+        { role: "ippo", text: "今はAIにつながりませんでした。少し時間を置いて、もう一度試してください。" },
+      ]);
+    } finally {
+      if (ippoPrepareIdRef.current === prepareId) setIppoLoading(false);
     }
   }
 
-  function closeIppo() {
+  // 音声モードをやめてテキストに戻る（パネルは開いたまま）。
+  function stopVoiceMode() {
     realtimeStartIdRef.current += 1;
     realtimeStartAbortRef.current?.abort();
     realtimeStartAbortRef.current = null;
     realtimeConversationRef.current?.stop();
     realtimeConversationRef.current = null;
     setIppoVoiceStatus("ended");
+    setIppoVoiceError("");
     setIppoVoiceTranscript("");
+    setIppoVoiceOn(false);
+    // 音声でのやりとりをテキストAIの文脈にも引き継ぐ
+    const seeded: IppoMessage[] = ippoVoiceMessages
+      .slice(-20)
+      .map((message) => ({ role: message.role === "assistant" ? "ippo" : "user", text: message.text }));
+    if (seeded.length > 0) setIppoMessages(seeded);
+  }
+
+  function startVoiceMode() {
+    if (!useOpenAiRealtime || ippoLoading || realtimeConversationRef.current) return;
+    setIppoVoiceOn(true);
+    setIppoVoiceHistoryOpen(false);
+    setIppoVoiceError("");
+    void startIppoVoice();
+  }
+
+  function closeIppo() {
+    ippoPrepareIdRef.current += 1;
+    stopVoiceMode();
     setIppoVoiceHistoryOpen(false);
     setIppoOpen(false);
+  }
+
+  // 会話ログの全削除。1回目は確認表示、もう一度押したら消す（元に戻せない）。
+  function handleClearIppoLog() {
+    if (!ippoClearArmed) {
+      setIppoClearArmed(true);
+      if (clearArmTimerRef.current !== null) window.clearTimeout(clearArmTimerRef.current);
+      clearArmTimerRef.current = window.setTimeout(() => setIppoClearArmed(false), 4000);
+      return;
+    }
+    if (clearArmTimerRef.current !== null) window.clearTimeout(clearArmTimerRef.current);
+    clearArmTimerRef.current = null;
+    setIppoClearArmed(false);
+    setIppoVoiceMessages([]);
+    setIppoMessages([]);
+    setIppoVoiceTranscript("");
+    void deleteIppoConversationMessages(item.id);
   }
 
   async function startIppoVoice() {
@@ -812,8 +896,8 @@ function TaskRow({
         },
         onAssistantResponseStart: () => setIppoVoiceTranscript(""),
         onTranscript: (text) => setIppoVoiceTranscript((transcript) => transcript + text),
-        onAssistantTranscriptFinal: (text) => saveIppoVoiceMessage("assistant", text),
-        onUserTranscript: (text, spokenAt) => saveIppoVoiceMessage("user", text, spokenAt),
+        onAssistantTranscriptFinal: (text) => saveIppoLogMessage("assistant", text),
+        onUserTranscript: (text, spokenAt) => saveIppoLogMessage("user", text, spokenAt),
         onTaskComplete: () => {
           // AIがほめ終わったら、会話を閉じて手動と同じチェック演出・同じ分岐で完了にする。
           closeIppo();
@@ -851,7 +935,7 @@ function TaskRow({
     }
   }
 
-  function saveIppoVoiceMessage(role: "user" | "assistant", text: string, createdAt = new Date().toISOString()) {
+  function saveIppoLogMessage(role: "user" | "assistant", text: string, createdAt = new Date().toISOString()) {
     const trimmed = text.trim();
     if (!trimmed) return;
     const message: IppoConversationMessage = {
@@ -870,10 +954,13 @@ function TaskRow({
     if (!input || ippoLoading) return;
     const nextMessages: IppoMessage[] = [...ippoMessages, { role: "user", text: input }];
     setIppoMessages(nextMessages);
+    // テキストのやりとりも音声と同じログに保存して、あとで音声AIにも文脈が渡るようにする
+    saveIppoLogMessage("user", input);
     setIppoLoading(true);
     try {
       const reply = await requestIppoReply(item.title, nextMessages, item.tag, steps);
       setIppoMessages((messages) => [...messages, { role: "ippo", text: reply }]);
+      saveIppoLogMessage("assistant", reply);
     } catch {
       setIppoMessages((messages) => [
         ...messages,
@@ -885,10 +972,6 @@ function TaskRow({
     } finally {
       setIppoLoading(false);
     }
-  }
-
-  async function requestInitialIppoReply() {
-    await sendIppoMessage("何から始めればいい？");
   }
 
   async function submitIppoMessage() {
@@ -1094,7 +1177,7 @@ function TaskRow({
           </div>
         )}
 
-      {/* AI相談は保存しない一時UI。今日やるの未完了タスクだけに出す。 */}
+      {/* AI相談。やりとりは音声・テキスト共通の会話ログに保存される。今日やるの未完了タスクだけに出す。 */}
       {mode === "today" &&
         !isHabit &&
         !isDone &&
@@ -1108,7 +1191,7 @@ function TaskRow({
             >
               <CloseIcon />
             </button>
-            {useOpenAiRealtime ? (
+            {useOpenAiRealtime && ippoVoiceOn ? (
               <>
                 <div className="ippo-chat__voice">
                   <div className={`ippo-chat__voice-dot ippo-chat__voice-dot--${ippoVoiceStatus}`} />
@@ -1116,12 +1199,22 @@ function TaskRow({
                     <div className="ippo-chat__voice-status">
                       {ippoVoiceError || ippoVoiceStatusText(ippoVoiceStatus, ippoLoading)}
                     </div>
-                    <button
-                      className="btn btn--ghost ippo-chat__voice-stop"
-                      onClick={closeIppo}
-                    >
-                      終了
-                    </button>
+                    <div className="ippo-chat__voice-buttons">
+                      {ippoVoiceStatus === "speaking" && (
+                        <button
+                          className="btn btn--ghost ippo-chat__voice-stop"
+                          onClick={() => realtimeConversationRef.current?.interrupt()}
+                        >
+                          止める
+                        </button>
+                      )}
+                      <button
+                        className="btn btn--ghost ippo-chat__voice-stop"
+                        onClick={stopVoiceMode}
+                      >
+                        テキストに戻る
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="ippo-chat__voice-actions">
@@ -1147,20 +1240,6 @@ function TaskRow({
                     <div className="ippo-chat__bubble ippo-chat__bubble--assistant">{ippoVoiceTranscript}</div>
                   )}
                 </div>
-                {ippoVoiceHistoryOpen && (
-                  <div className="ippo-chat__voice-history">
-                    {ippoVoiceMessages.length ? (
-                      ippoVoiceMessages.map((message) => (
-                        <div className="ippo-chat__voice-history-row" key={message.id}>
-                          <span>{message.role === "user" ? "あなた" : "AI"}</span>
-                          <p>{message.text}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="ippo-chat__voice-history-empty">まだ会話ログはありません</p>
-                    )}
-                  </div>
-                )}
               </>
             ) : (
               <>
@@ -1202,7 +1281,48 @@ function TaskRow({
                     <CheckIcon />
                   </button>
                 </div>
+                <div className="ippo-chat__voice-actions">
+                  {useOpenAiRealtime && (
+                    <button
+                      className="btn btn--ghost ippo-chat__voice-log"
+                      onClick={startVoiceMode}
+                      disabled={ippoLoading}
+                    >
+                      <MicIcon />
+                      音声で話す
+                    </button>
+                  )}
+                  <button
+                    className="btn btn--ghost ippo-chat__voice-log"
+                    onClick={() => setIppoVoiceHistoryOpen((open) => !open)}
+                    aria-expanded={ippoVoiceHistoryOpen}
+                  >
+                    <HistoryIcon />
+                    会話ログ
+                  </button>
+                </div>
               </>
+            )}
+            {/* 会話ログは音声・テキスト共通。削除は2度押しで確定（元に戻せない）。 */}
+            {ippoVoiceHistoryOpen && (
+              <div className="ippo-chat__voice-history">
+                {ippoVoiceMessages.length ? (
+                  ippoVoiceMessages.map((message) => (
+                    <div className="ippo-chat__voice-history-row" key={message.id}>
+                      <span>{message.role === "user" ? "あなた" : "AI"}</span>
+                      <p>{message.text}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="ippo-chat__voice-history-empty">まだ会話ログはありません</p>
+                )}
+                {ippoVoiceMessages.length > 0 && (
+                  <button className="btn btn--ghost ippo-chat__voice-clear" onClick={handleClearIppoLog}>
+                    <TrashIcon />
+                    {ippoClearArmed ? "もう一度押すと消えます" : "ログを消す"}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}

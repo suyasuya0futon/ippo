@@ -639,9 +639,18 @@ select {
   font-size: 13px;
 }
 
+/* 音声モード中の右上ボタン群（止める／テキストに戻る） */
+.ippo-chat__voice-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .ippo-chat__voice-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
   padding: 0 20px 5px 0;
 }
 
@@ -697,6 +706,17 @@ select {
 .ippo-chat__voice-history-empty {
   color: var(--text-soft);
   font-size: 13px;
+}
+
+/* ログ全削除。目立たせず、でも押したら赤系で「消す」操作だと分かるように */
+.ippo-chat__voice-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: #c97a7a;
 }
 
 .ippo-chat__loading {

@@ -28,6 +28,8 @@ export type IppoRealtimeStatus =
 
 export type IppoRealtimeConversation = {
   stop: () => void;
+  /** AIの発話を止めて、すぐユーザーが話せる状態に戻す。 */
+  interrupt: () => void;
 };
 
 type StartRealtimeOptions = {
@@ -81,6 +83,7 @@ function statusFromEventType(type: string): IppoRealtimeStatus | null {
   if (type === "input_audio_buffer.speech_stopped") return "thinking";
   if (type === "output_audio_buffer.started") return "speaking";
   if (type === "output_audio_buffer.stopped") return "listening";
+  if (type === "output_audio_buffer.cleared") return "listening";
   if (type === "error") return "error";
   return null;
 }
@@ -175,6 +178,7 @@ export async function startIppoRealtimeConversation({
   let userSpeechChunks: Blob[] = [];
   let userSpeechEndedAt = "";
   let outputAudioActive = false;
+  let responseActive = false;
   let taskCompleteCallId: string | null = null;
   let praiseRequested = false;
   let praiseResponseDone = false;
@@ -265,6 +269,18 @@ export async function startIppoRealtimeConversation({
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
   const dataChannel = pc.createDataChannel("oai-events");
+
+  // 発話への割り込み。生成中なら生成を止め、再生中の音声を破棄してマイクに戻す。
+  // 完了シーケンス中（ほめ言葉）は割り込まない。
+  const interrupt = () => {
+    if (stopped || taskCompleteCallId || dataChannel.readyState !== "open") return;
+    if (responseActive) {
+      dataChannel.send(JSON.stringify({ type: "response.cancel" }));
+    }
+    if (outputAudioActive) {
+      dataChannel.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
+    }
+  };
   dataChannel.onopen = () => {
     onStatus("speaking");
     dataChannel.send(
@@ -297,7 +313,11 @@ export async function startIppoRealtimeConversation({
         }
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
-        if (message.type === "response.created") onAssistantResponseStart?.();
+        if (message.type === "response.created") {
+          responseActive = true;
+          onAssistantResponseStart?.();
+        }
+        if (message.type === "response.done") responseActive = false;
         if (message.type === "input_audio_buffer.speech_stopped") {
           userSpeechEndedAt = new Date().toISOString();
           stopUserSpeechRecorder();
@@ -349,7 +369,7 @@ export async function startIppoRealtimeConversation({
           stopUserSpeechRecorder();
           setMicEnabled(false);
         }
-        if (message.type === "output_audio_buffer.stopped") {
+        if (message.type === "output_audio_buffer.stopped" || message.type === "output_audio_buffer.cleared") {
           outputAudioActive = false;
           if (praiseResponseDone) {
             // ほめ言葉を言い終えた。そのまま完了へ。
@@ -420,5 +440,5 @@ export async function startIppoRealtimeConversation({
   }
 
   timerId = window.setTimeout(stop, maxSeconds * 1000);
-  return { stop };
+  return { stop, interrupt };
 }

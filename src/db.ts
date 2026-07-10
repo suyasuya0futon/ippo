@@ -232,6 +232,12 @@ export async function insertIppoConversationMessage(message: IppoConversationMes
   return !error;
 }
 
+export async function deleteIppoConversationMessages(itemId: string): Promise<boolean> {
+  const { error } = await supabase.from("ai_conversation_messages").delete().eq("item_id", itemId);
+  warn("delete AI conversation", error);
+  return !error;
+}
+
 // --- ユーザー設定（フラグ自動繰り上げの判定用） ---
 
 export async function getLastPromoteDate(): Promise<string | null> {
