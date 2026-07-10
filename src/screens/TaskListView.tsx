@@ -36,6 +36,7 @@ import {
   toggleRecurringToday,
 } from "../store";
 import type { Bucket, DB, Item } from "../types";
+import type { IppoConversationMessage } from "../types";
 import { TagChip } from "../components/TagChip";
 import ItemInput from "../components/ItemInput";
 import { requestIppoReply, type IppoMessage } from "../ippoAi";
@@ -45,6 +46,10 @@ import {
   type IppoRealtimeConversation,
   type IppoRealtimeStatus,
 } from "../ippoRealtime";
+import {
+  fetchIppoConversationMessages,
+  insertIppoConversationMessage,
+} from "../db";
 
 const FUTURE_BUCKETS = ["tomorrow", "soon", "someday"] as const;
 type FutureBucket = (typeof FUTURE_BUCKETS)[number];
@@ -130,6 +135,16 @@ function AiIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
       <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" />
       <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 2" />
     </svg>
   );
 }
@@ -672,6 +687,8 @@ function TaskRow({
   const [ippoVoiceStatus, setIppoVoiceStatus] = useState<IppoRealtimeStatus>("ended");
   const [ippoVoiceError, setIppoVoiceError] = useState("");
   const [ippoVoiceTranscript, setIppoVoiceTranscript] = useState("");
+  const [ippoVoiceMessages, setIppoVoiceMessages] = useState<IppoConversationMessage[]>([]);
+  const [ippoVoiceHistoryOpen, setIppoVoiceHistoryOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
@@ -744,6 +761,7 @@ function TaskRow({
   function openIppo() {
     setIppoOpen(true);
     if (useOpenAiRealtime) {
+      setIppoVoiceHistoryOpen(false);
       if (!realtimeConversationRef.current && !ippoLoading) {
         void startIppoVoice();
       }
@@ -762,6 +780,7 @@ function TaskRow({
     realtimeConversationRef.current = null;
     setIppoVoiceStatus("ended");
     setIppoVoiceTranscript("");
+    setIppoVoiceHistoryOpen(false);
     setIppoOpen(false);
   }
 
@@ -773,10 +792,14 @@ function TaskRow({
     setIppoVoiceError("");
     setIppoVoiceTranscript("");
     try {
+      const messages = await fetchIppoConversationMessages(item.id);
+      if (realtimeStartIdRef.current !== startId || abortController.signal.aborted) return;
+      setIppoVoiceMessages(messages);
       const conversation = await startIppoRealtimeConversation({
         taskTitle: item.title,
         taskTag: item.tag,
         steps,
+        history: messages.slice(-20).map((message) => ({ role: message.role, text: message.text })),
         signal: abortController.signal,
         onStatus: setIppoVoiceStatus,
         onError: (message) => {
@@ -785,6 +808,8 @@ function TaskRow({
         },
         onAssistantResponseStart: () => setIppoVoiceTranscript(""),
         onTranscript: (text) => setIppoVoiceTranscript((transcript) => transcript + text),
+        onAssistantTranscriptFinal: (text) => saveIppoVoiceMessage("assistant", text),
+        onUserTranscript: (text, spokenAt) => saveIppoVoiceMessage("user", text, spokenAt),
       });
       if (realtimeStartIdRef.current !== startId || abortController.signal.aborted) {
         conversation.stop();
@@ -807,6 +832,21 @@ function TaskRow({
       }
       if (realtimeStartIdRef.current === startId) setIppoLoading(false);
     }
+  }
+
+  function saveIppoVoiceMessage(role: "user" | "assistant", text: string, createdAt = new Date().toISOString()) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const message: IppoConversationMessage = {
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      role,
+      text: trimmed,
+      createdAt,
+    };
+    setIppoVoiceMessages((messages) => [...messages, message].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+    if (role === "assistant") setIppoVoiceTranscript("");
+    void insertIppoConversationMessage(message);
   }
 
   async function sendIppoMessage(input: string) {
@@ -1067,8 +1107,42 @@ function TaskRow({
                     </button>
                   </div>
                 </div>
-                {ippoVoiceTranscript && (
-                  <div className="ippo-chat__bubble ippo-chat__bubble--ippo">{ippoVoiceTranscript}</div>
+                <div className="ippo-chat__voice-actions">
+                  <button
+                    className="btn btn--ghost ippo-chat__voice-log"
+                    onClick={() => setIppoVoiceHistoryOpen((open) => !open)}
+                    aria-expanded={ippoVoiceHistoryOpen}
+                  >
+                    <HistoryIcon />
+                    会話ログ
+                  </button>
+                </div>
+                <div className="ippo-chat__voice-messages" aria-live="polite">
+                  {ippoVoiceMessages.slice(-2).map((message) => (
+                    <div
+                      className={`ippo-chat__bubble ippo-chat__bubble--${message.role}`}
+                      key={message.id}
+                    >
+                      {message.text}
+                    </div>
+                  ))}
+                  {ippoVoiceTranscript && (
+                    <div className="ippo-chat__bubble ippo-chat__bubble--assistant">{ippoVoiceTranscript}</div>
+                  )}
+                </div>
+                {ippoVoiceHistoryOpen && (
+                  <div className="ippo-chat__voice-history">
+                    {ippoVoiceMessages.length ? (
+                      ippoVoiceMessages.map((message) => (
+                        <div className="ippo-chat__voice-history-row" key={message.id}>
+                          <span>{message.role === "user" ? "あなた" : "AI"}</span>
+                          <p>{message.text}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="ippo-chat__voice-history-empty">まだ会話ログはありません</p>
+                    )}
+                  </div>
                 )}
               </>
             ) : (

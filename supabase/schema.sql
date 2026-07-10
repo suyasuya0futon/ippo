@@ -80,6 +80,16 @@ create table if not exists ippo.ai_realtime_sessions (
   estimated_cost_usd numeric(10, 4) not null default 0.0166
 );
 
+-- AI会話ログ（音声は保存せず、文字起こしとAIの発話だけをタスクごとに残す）
+create table if not exists ippo.ai_conversation_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  item_id uuid not null references ippo.items (id) on delete cascade,
+  role text not null check (role in ('user', 'assistant')),
+  text text not null check (char_length(text) between 1 and 2000),
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_items_user on ippo.items (user_id);
 create index if not exists idx_steps_item on ippo.steps (item_id);
 create index if not exists idx_today_user_date on ippo.today_items (user_id, date);
@@ -88,6 +98,8 @@ create index if not exists ai_realtime_sessions_started_at_idx
   on ippo.ai_realtime_sessions (started_at);
 create index if not exists ai_realtime_sessions_user_started_at_idx
   on ippo.ai_realtime_sessions (user_id, started_at);
+create index if not exists ai_conversation_messages_item_created_at_idx
+  on ippo.ai_conversation_messages (item_id, created_at);
 
 -- PostgREST 経由で読み書きできるよう権限を付与（行の制御は RLS が行う）
 grant all on all tables in schema ippo to anon, authenticated, service_role;
@@ -101,6 +113,7 @@ alter table ippo.done_logs enable row level security;
 alter table ippo.day_notes enable row level security;
 alter table ippo.user_settings enable row level security;
 alter table ippo.ai_realtime_sessions enable row level security;
+alter table ippo.ai_conversation_messages enable row level security;
 
 drop policy if exists "own items" on ippo.items;
 create policy "own items" on ippo.items
@@ -129,3 +142,7 @@ create policy "own user_settings" on ippo.user_settings
 drop policy if exists "own ai realtime sessions" on ippo.ai_realtime_sessions;
 create policy "own ai realtime sessions" on ippo.ai_realtime_sessions
   for select using (auth.uid() = user_id);
+
+drop policy if exists "own ai conversation messages" on ippo.ai_conversation_messages;
+create policy "own ai conversation messages" on ippo.ai_conversation_messages
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

@@ -12,6 +12,7 @@ type RequestBody = {
   taskTitle?: string;
   taskTag?: string | null;
   steps?: Array<{ title?: unknown; done?: unknown }>;
+  history?: Array<{ role?: unknown; text?: unknown }>;
 };
 
 type UsageRow = {
@@ -155,6 +156,7 @@ function buildInstructions(
   taskTitle: string,
   taskTag: string,
   steps: Array<{ title: string; done: boolean }>,
+  history: Array<{ role: "user" | "assistant"; text: string }>,
 ) {
   const targetLines = [`対象タスク: ${taskTitle}`];
   if (taskTag) targetLines.push(`対象タグ: #${taskTag}`);
@@ -167,6 +169,9 @@ function buildInstructions(
   const stepLines = steps.length
     ? steps.map((step) => `- [${step.done ? "完了" : "未完了"}] ${step.title}`)
     : ["（まだ登録されていません）"];
+  const historyLines = history.length
+    ? history.map((message) => `${message.role === "user" ? "ユーザー" : "AI"}: ${message.text}`)
+    : ["（まだ会話はありません）"];
 
   return [
     "あなたはタスクを進めるためのAI伴走者です。",
@@ -181,6 +186,8 @@ function buildInstructions(
     "このタスクに登録済みの小さな一歩:",
     ...stepLines,
     "登録済みの未完了一歩があれば、そのうち次に取りかかるものを優先する。",
+    "直近の会話ログ（文脈として参照し、同じ説明を繰り返さない）:",
+    ...historyLines,
   ].join("\n");
 }
 
@@ -192,6 +199,16 @@ function sanitizeSteps(steps: Array<{ title?: unknown; done?: unknown }>) {
     }))
     .filter((step) => step.title.length > 0)
     .slice(0, 20);
+}
+
+function sanitizeHistory(history: Array<{ role?: unknown; text?: unknown }>) {
+  return history
+    .map((message) => ({
+      role: message.role === "assistant" ? "assistant" : "user",
+      text: String(message.text ?? "").trim().slice(0, 500),
+    }))
+    .filter((message) => message.text.length > 0)
+    .slice(-20);
 }
 
 Deno.serve(async (req) => {
@@ -222,6 +239,7 @@ Deno.serve(async (req) => {
 
   const taskTag = String(body.taskTag ?? "").trim().replace(/^[#＃]/, "").slice(0, 80);
   const steps = sanitizeSteps(Array.isArray(body.steps) ? body.steps : []);
+  const history = sanitizeHistory(Array.isArray(body.history) ? body.history : []);
   const model = Deno.env.get("OPENAI_REALTIME_MODEL") ?? "gpt-realtime-2.1-mini";
   const voice = Deno.env.get("OPENAI_REALTIME_VOICE") ?? "marin";
   const maxSeconds = Math.max(15, Math.floor(readNumberEnv("OPENAI_REALTIME_MAX_SECONDS", 180)));
@@ -271,7 +289,7 @@ Deno.serve(async (req) => {
         session: {
           type: "realtime",
           model,
-          instructions: buildInstructions(taskTitle, taskTag, steps),
+          instructions: buildInstructions(taskTitle, taskTag, steps, history),
           output_modalities: ["audio"],
           // 音声トークンは文字数より速く消費するため、短い案内でも途中で途切れない余裕を持たせる。
           max_output_tokens: 1000,

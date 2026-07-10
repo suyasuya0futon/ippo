@@ -56,6 +56,15 @@ export interface DoneLog {
   doneAt: string; // ISO 文字列
 }
 
+/** タスクごとに残すAI会話の発話。音声ファイルは保存せず文字だけを持つ。 */
+export interface IppoConversationMessage {
+  id: ID;
+  itemId: ID;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
+}
+
 /** ブラウザに丸ごと保存するデータの全体 */
 export interface DB {
   items: Item[];

@@ -13,6 +13,11 @@ type RealtimeSessionResponse = {
   detail?: unknown;
 };
 
+type TranscriptionResponse = {
+  text?: string;
+  error?: string;
+};
+
 export type IppoRealtimeStatus =
   | "connecting"
   | "speaking"
@@ -29,12 +34,26 @@ type StartRealtimeOptions = {
   taskTitle: string;
   taskTag?: string | null;
   steps?: Array<{ title: string; done: boolean }>;
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
   signal?: AbortSignal;
   onStatus: (status: IppoRealtimeStatus) => void;
   onError: (message: string) => void;
   onAssistantResponseStart?: () => void;
   onTranscript?: (text: string) => void;
+  onAssistantTranscriptFinal?: (text: string) => void;
+  onUserTranscript?: (text: string, spokenAt: string) => void;
 };
+
+async function transcribeUserAudio(audio: Blob): Promise<string> {
+  const form = new FormData();
+  const extension = audio.type.includes("ogg") ? "ogg" : "webm";
+  form.append("audio", audio, `speech.${extension}`);
+  const { data, error } = await supabase.functions.invoke<TranscriptionResponse>("ippo-audio-transcribe", {
+    body: form,
+  });
+  if (error || data?.error) throw new Error(data?.error ?? "audio_transcription_failed");
+  return typeof data?.text === "string" ? data.text.trim() : "";
+}
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -78,11 +97,14 @@ export async function startIppoRealtimeConversation({
   taskTitle,
   taskTag,
   steps,
+  history,
   signal,
   onStatus,
   onError,
   onAssistantResponseStart,
   onTranscript,
+  onAssistantTranscriptFinal,
+  onUserTranscript,
 }: StartRealtimeOptions): Promise<IppoRealtimeConversation> {
   onStatus("connecting");
 
@@ -119,7 +141,7 @@ export async function startIppoRealtimeConversation({
   const { data, error } = await supabase.functions.invoke<RealtimeSessionResponse>(
     "ippo-realtime-session",
     {
-      body: { taskTitle, taskTag, steps },
+      body: { taskTitle, taskTag, steps, history },
     },
   );
   throwIfAborted();
@@ -147,11 +169,53 @@ export async function startIppoRealtimeConversation({
   const maxSeconds = Math.max(15, Number(data?.maxSeconds ?? 180));
   let stopped = false;
   let timerId: number | null = null;
+  let userSpeechRecorder: MediaRecorder | null = null;
+  let userSpeechChunks: Blob[] = [];
+  let userSpeechEndedAt = "";
+
+  const startUserSpeechRecorder = () => {
+    if (stopped || userSpeechRecorder || !localStream || typeof MediaRecorder === "undefined") return;
+    try {
+      userSpeechChunks = [];
+      userSpeechRecorder = new MediaRecorder(localStream);
+      userSpeechRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) userSpeechChunks.push(event.data);
+      };
+      userSpeechRecorder.onstop = () => {
+        const chunks = userSpeechChunks;
+        const spokenAt = userSpeechEndedAt || new Date().toISOString();
+        userSpeechChunks = [];
+        userSpeechRecorder = null;
+        userSpeechEndedAt = "";
+        if (!chunks.length || stopped) return;
+        const audioBlob = new Blob(chunks, { type: chunks[0]?.type || "audio/webm" });
+        void transcribeUserAudio(audioBlob)
+          .then((text) => {
+            if (text && !stopped) onUserTranscript?.(text, spokenAt);
+          })
+          .catch((error) => console.warn("ユーザー音声の文字起こしに失敗", error));
+      };
+      userSpeechRecorder.start();
+    } catch (error) {
+      console.warn("ユーザー音声の録音を開始できませんでした", error);
+      userSpeechRecorder = null;
+    }
+  };
+
+  const stopUserSpeechRecorder = () => {
+    if (userSpeechRecorder?.state === "recording") userSpeechRecorder.stop();
+  };
 
   const stop = () => {
     if (stopped) return;
     stopped = true;
     if (timerId !== null) window.clearTimeout(timerId);
+    if (userSpeechRecorder) {
+      userSpeechRecorder.onstop = null;
+      stopUserSpeechRecorder();
+      userSpeechRecorder = null;
+      userSpeechChunks = [];
+    }
     stopLocalStream();
     pc.getSenders().forEach((sender) => sender.track?.stop());
     pc.close();
@@ -199,12 +263,23 @@ export async function startIppoRealtimeConversation({
         }
         if (message.type === "response.output_audio_transcript.done" && typeof message.transcript === "string") {
           console.info("Realtime transcript complete", message.transcript);
+          onAssistantTranscriptFinal?.(message.transcript);
         }
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
         if (message.type === "response.created") onAssistantResponseStart?.();
-        if (message.type === "output_audio_buffer.started") setMicEnabled(false);
-        if (message.type === "output_audio_buffer.stopped") setMicEnabled(true);
+        if (message.type === "input_audio_buffer.speech_stopped") {
+          userSpeechEndedAt = new Date().toISOString();
+          stopUserSpeechRecorder();
+        }
+        if (message.type === "output_audio_buffer.started") {
+          stopUserSpeechRecorder();
+          setMicEnabled(false);
+        }
+        if (message.type === "output_audio_buffer.stopped") {
+          setMicEnabled(true);
+          startUserSpeechRecorder();
+        }
       }
       if (message.type === "error") {
         onError(message.error?.message ?? "realtime_event_error");

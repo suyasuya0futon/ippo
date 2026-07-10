@@ -11,6 +11,7 @@ import {
   type Bucket,
   type Step,
   type DoneLog,
+  type IppoConversationMessage,
 } from "./types";
 
 // --- 行（DB）→ 型（アプリ）の変換 ---
@@ -43,6 +44,13 @@ type LogRow = {
   tag: string | null;
   done_at: string;
 };
+type IppoConversationMessageRow = {
+  id: string;
+  item_id: string;
+  role: "user" | "assistant";
+  text: string;
+  created_at: string;
+};
 
 const toItem = (r: ItemRow): Item => ({
   id: r.id,
@@ -71,6 +79,13 @@ const toLog = (r: LogRow): DoneLog => ({
   title: r.title,
   tag: r.tag ?? null,
   doneAt: r.done_at,
+});
+const toIppoConversationMessage = (r: IppoConversationMessageRow): IppoConversationMessage => ({
+  id: r.id,
+  itemId: r.item_id,
+  role: r.role,
+  text: r.text,
+  createdAt: r.created_at,
 });
 
 // --- 型（アプリ）→ 行（DB）。user_id は DB 側の既定値 auth.uid() に任せる ---
@@ -102,6 +117,13 @@ const logRow = (l: DoneLog) => ({
   title: l.title,
   tag: l.tag ?? null,
   done_at: l.doneAt,
+});
+const ippoConversationMessageRow = (message: IppoConversationMessage) => ({
+  id: message.id,
+  item_id: message.itemId,
+  role: message.role,
+  text: message.text,
+  created_at: message.createdAt,
 });
 
 // 書き込み失敗：コンソールに出し、画面にもトーストで知らせる。
@@ -187,6 +209,27 @@ export async function deleteLogsByRef(refType: "item" | "step", refId: string, d
   let q = supabase.from("done_logs").delete().eq("ref_type", refType).eq("ref_id", refId);
   if (date) q = q.eq("date", date);
   warn("deleteLogsByRef", (await q).error);
+}
+
+// --- AI会話ログ ---
+
+export async function fetchIppoConversationMessages(itemId: string): Promise<IppoConversationMessage[]> {
+  const { data, error } = await supabase
+    .from("ai_conversation_messages")
+    .select("*")
+    .eq("item_id", itemId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    logError("fetch AI conversation", error);
+    return [];
+  }
+  return (data ?? []).map((row) => toIppoConversationMessage(row as IppoConversationMessageRow));
+}
+
+export async function insertIppoConversationMessage(message: IppoConversationMessage): Promise<boolean> {
+  const { error } = await supabase.from("ai_conversation_messages").insert(ippoConversationMessageRow(message));
+  warn("insert AI conversation", error);
+  return !error;
 }
 
 // --- ユーザー設定（フラグ自動繰り上げの判定用） ---

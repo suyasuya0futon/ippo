@@ -639,6 +639,66 @@ select {
   font-size: 13px;
 }
 
+.ippo-chat__voice-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 20px 5px 0;
+}
+
+.ippo-chat__voice-log {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.ippo-chat__voice-messages {
+  display: grid;
+  gap: 5px;
+}
+
+.ippo-chat__bubble--user {
+  margin-left: 24px;
+  color: var(--text-soft);
+}
+
+.ippo-chat__bubble--assistant {
+  color: var(--text);
+}
+
+.ippo-chat__voice-history {
+  margin: 8px 16px 4px 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.ippo-chat__voice-history-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ippo-chat__voice-history-row span {
+  color: var(--text-soft);
+}
+
+.ippo-chat__voice-history-row p,
+.ippo-chat__voice-history-empty {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.ippo-chat__voice-history-empty {
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
 .ippo-chat__loading {
   display: inline-flex;
   align-items: center;
