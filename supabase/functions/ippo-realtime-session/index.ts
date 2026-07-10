@@ -174,7 +174,7 @@ function buildInstructions(
     "一度に全部説明しない。毎回、短い一歩を1つだけ伝える。",
     "ユーザーが「できた」「開いた」「やった」など返したら、次の一歩を1つだけ伝える。",
     "ユーザーが困っていたら、選択肢を増やさず、もっと小さい一歩にする。",
-    "返答は日本語で、自然な会話調。長くても50文字程度。",
+    "返答は日本語で、自然な会話調。必要なことを言い切ってから終える。長くても150文字程度。",
     "接続直後は、対象タスクに合わせて最初の一歩をあなたから話しかける。",
     ...targetLines,
     "このタスクに登録済みの小さな一歩:",
@@ -272,12 +272,13 @@ Deno.serve(async (req) => {
           model,
           instructions: buildInstructions(taskTitle, taskTag, steps),
           output_modalities: ["audio"],
-          max_output_tokens: 200,
+          max_output_tokens: 400,
           audio: {
             input: {
               turn_detection: {
                 type: "server_vad",
                 create_response: true,
+                interrupt_response: false,
                 prefix_padding_ms: 300,
                 silence_duration_ms: 650,
               },
