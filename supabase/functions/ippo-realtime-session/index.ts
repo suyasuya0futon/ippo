@@ -272,7 +272,7 @@ Deno.serve(async (req) => {
           model,
           instructions: buildInstructions(taskTitle, taskTag, steps),
           output_modalities: ["audio"],
-          max_output_tokens: 400,
+          max_output_tokens: 200,
           audio: {
             input: {
               turn_detection: {

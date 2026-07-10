@@ -10,6 +10,7 @@ type RealtimeSessionResponse = {
   maxSeconds?: number;
   sessionId?: string;
   error?: string;
+  detail?: unknown;
 };
 
 export type IppoRealtimeStatus =
@@ -37,6 +38,20 @@ function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return "unknown_error";
+}
+
+async function functionErrorDetail(error: unknown): Promise<string> {
+  if (!error || typeof error !== "object" || !("context" in error)) return errorMessage(error);
+  const context = (error as { context?: unknown }).context;
+  if (!(context instanceof Response)) return errorMessage(error);
+
+  try {
+    const body = (await context.clone().json()) as RealtimeSessionResponse;
+    const detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? "");
+    return [body.error, detail].filter(Boolean).join(": ").slice(0, 300) || errorMessage(error);
+  } catch {
+    return errorMessage(error);
+  }
 }
 
 function statusFromEventType(type: string): IppoRealtimeStatus | null {
@@ -101,12 +116,13 @@ export async function startIppoRealtimeConversation({
   if (error) {
     console.error("Realtime セッション作成失敗", error);
     stopLocalStream();
-    throw new Error(`realtime_session_request_failed: ${errorMessage(error)}`);
+    throw new Error(`realtime_session_request_failed: ${await functionErrorDetail(error)}`);
   }
   if (data?.error) {
     console.error("Realtime セッション作成エラー", data.error);
     stopLocalStream();
-    throw new Error(data.error);
+    const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? "");
+    throw new Error([data.error, detail].filter(Boolean).join(": ").slice(0, 300));
   }
 
   const clientSecret = data?.clientSecret;
