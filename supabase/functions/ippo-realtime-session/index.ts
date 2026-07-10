@@ -278,7 +278,6 @@ Deno.serve(async (req) => {
               turn_detection: {
                 type: "server_vad",
                 create_response: true,
-                interrupt_response: false,
                 prefix_padding_ms: 300,
                 silence_duration_ms: 650,
               },
