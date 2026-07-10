@@ -181,9 +181,20 @@ export async function startIppoRealtimeConversation({
   };
   dataChannel.onmessage = (event) => {
     try {
-      const message = JSON.parse(String(event.data)) as { type?: unknown; error?: { message?: string } };
+      const message = JSON.parse(String(event.data)) as {
+        type?: unknown;
+        delta?: unknown;
+        transcript?: unknown;
+        error?: { message?: string };
+      };
       if (typeof message.type === "string") {
         console.info("Realtime event", message.type);
+        if (message.type === "response.output_audio_transcript.delta" && typeof message.delta === "string") {
+          console.info("Realtime transcript", message.delta);
+        }
+        if (message.type === "response.output_audio_transcript.done" && typeof message.transcript === "string") {
+          console.info("Realtime transcript complete", message.transcript);
+        }
         const status = statusFromEventType(message.type);
         if (status) onStatus(status);
         if (message.type === "output_audio_buffer.started") setMicEnabled(false);
