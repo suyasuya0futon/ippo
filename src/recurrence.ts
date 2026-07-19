@@ -1,3 +1,4 @@
+import * as holidayJp from "@holiday-jp/holiday_jp";
 import type { Item } from "./types";
 
 /** JavaScript の getDay() と同じ並びで、日曜を最下位ビットにする。 */
@@ -38,5 +39,8 @@ export function weekdayOf(date: string): number {
 }
 
 export function isHabitScheduledOn(item: Item, date: string): boolean {
-  return item.recurring && hasRepeatDay(item.repeatDays, weekdayOf(date));
+  if (!item.recurring || !hasRepeatDay(item.repeatDays, weekdayOf(date))) return false;
+  // 「平日」は単なる月〜金ではなく、日本の祝日・振替休日・国民の休日も除く。
+  if (item.repeatDays === WEEKDAY_REPEAT_DAYS && holidayJp.isHoliday(date)) return false;
+  return true;
 }
