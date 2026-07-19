@@ -15,6 +15,7 @@ create table if not exists ippo.items (
   title text not null,
   tag text,
   recurring boolean not null default false,
+  repeat_days integer not null default 127 check (repeat_days between 1 and 127),
   bucket text not null default 'someday',
   scheduled_date date,
   sort_order double precision not null default 0,

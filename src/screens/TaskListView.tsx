@@ -39,6 +39,7 @@ import type { Bucket, DB, Item } from "../types";
 import type { IppoConversationMessage } from "../types";
 import { TagChip } from "../components/TagChip";
 import ItemInput from "../components/ItemInput";
+import { ALL_REPEAT_DAYS, formatRepeatDays, isHabitScheduledOn } from "../recurrence";
 import { requestIppoReply, type IppoMessage } from "../ippoAi";
 import {
   IPPO_AI_PROVIDER,
@@ -294,7 +295,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     title: ReactNode,
     items: Item[],
     placeholder: string,
-    onAdd: (input: string) => void,
+    onAdd: (input: string, repeatDays: number) => void,
     emptyText: string,
     habitDoneOf?: (it: Item) => boolean,
     sortable = false,
@@ -358,11 +359,12 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           <div className="tlist__add" ref={addPanelRef}>
             <ItemInput
               showRecurring={false}
+              showRepeatDays={key === "habit"}
               alwaysShowTags
               autoFocus
               placeholder={placeholder}
-              onSubmit={(input) => {
-                onAdd(input);
+              onSubmit={(input, _recurring, repeatDays) => {
+                onAdd(input, repeatDays);
                 setAddOpen(null);
               }}
             />
@@ -498,7 +500,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
 
   // 習慣：未完了が上（手動順）→ 完了は下（新しい完了ほど上、早い完了ほど下）
   const habits = db.items
-    .filter((i) => i.recurring)
+    .filter((i) => isHabitScheduledOn(i, date))
     .sort((a, b) => {
       const ad = isDoneToday(db, a.id);
       const bd = isDoneToday(db, b.id);
@@ -593,11 +595,11 @@ export default function TaskListView({ mode }: { mode: Mode }) {
         )}
         {section(
           "habit",
-          `毎日の習慣${countLabel(habitsRemaining, habits.length, true)}`,
+          `習慣${countLabel(habitsRemaining, habits.length, true)}`,
           habitsOpen,
-          "毎日やること（例：プロテイン飲む #からだ）",
-          (input) => addItem(input, true),
-          "習慣はありません。",
+          "習慣にしたいこと（例：カーブスに行く #からだ）",
+          (input, repeatDays) => addItem(input, true, { repeatDays }),
+          "今日の習慣はありません。",
           (it) => isDoneToday(db, it.id),
           true,
           habitsDone
@@ -669,7 +671,7 @@ function SortableTaskRow({
   );
 }
 
-// habitDone は毎日の習慣行のときだけ渡す（その日の完了状態）
+// habitDone は習慣行のときだけ渡す（その日の完了状態）
 // dragProps は並べ替え対象（未完了）の行だけに渡す。行本体に付けて「掴んで移動」にする。
 function TaskRow({
   item,
@@ -989,6 +991,8 @@ function TaskRow({
         <ItemInput
           initialText={itemToInput(item)}
           showRecurring={false}
+          showRepeatDays={isHabit}
+          initialRepeatDays={item.repeatDays}
           compact
           leftAdornment={
             <button
@@ -1006,8 +1010,8 @@ function TaskRow({
             </button>
           }
           autoFocus
-          onSubmit={(input) => {
-            editItem(item.id, input, item.recurring);
+          onSubmit={(input, _recurring, repeatDays) => {
+            editItem(item.id, input, item.recurring, repeatDays);
             setEditing(false);
           }}
         />
@@ -1043,6 +1047,9 @@ function TaskRow({
           <TagChip tag={item.tag} />
           {/* 取り消し線はタイトル文字だけに付ける（タグ chip やキャレットには付けない） */}
           <span style={displayDone ? { textDecoration: "line-through" } : undefined}>{item.title}</span>
+          {isHabit && item.repeatDays !== ALL_REPEAT_DAYS && (
+            <span className="habit-schedule">{formatRepeatDays(item.repeatDays)}</span>
+          )}
           {canToggleSteps && (
             <span className="section-head__caret" style={{ marginLeft: 6 }}>
               {stepsOpen ? "▾" : "▸"}

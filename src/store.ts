@@ -15,6 +15,7 @@ import {
 } from "./types";
 import { seedDB } from "./seed";
 import * as remote from "./db";
+import { ALL_REPEAT_DAYS } from "./recurrence";
 
 let db: DB = structuredClone(emptyDB);
 const listeners = new Set<() => void>();
@@ -133,7 +134,7 @@ export function allTags(d: DB): string[] {
 export function addItem(
   input: string,
   recurring: boolean,
-  opts: { bucket?: Bucket } = {}
+  opts: { bucket?: Bucket; repeatDays?: number } = {}
 ): string | null {
   const { title, tag } = parseTag(input);
   if (!title) return null;
@@ -142,6 +143,7 @@ export function addItem(
     title,
     tag,
     recurring,
+    repeatDays: opts.repeatDays ?? ALL_REPEAT_DAYS,
     bucket: opts.bucket ?? "someday",
     sortOrder: -Date.now(), // 新しいものほど上（昇順で先頭）
     status: "open",
@@ -152,7 +154,12 @@ export function addItem(
   return item.id;
 }
 
-export function editItem(itemId: string, input: string, recurring: boolean) {
+export function editItem(
+  itemId: string,
+  input: string,
+  recurring: boolean,
+  repeatDays: number = ALL_REPEAT_DAYS
+) {
   const { title, tag } = parseTag(input);
   if (!title) return;
   optimistic((d) => {
@@ -161,6 +168,7 @@ export function editItem(itemId: string, input: string, recurring: boolean) {
     it.title = title;
     it.tag = tag;
     it.recurring = recurring;
+    it.repeatDays = repeatDays;
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);

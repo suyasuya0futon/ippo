@@ -2,6 +2,7 @@
 // Supabase 上のデータが空のときだけ store から呼ばれる。
 
 import { emptyDB, type DB, type Item } from "./types";
+import { ALL_REPEAT_DAYS } from "./recurrence";
 
 const id = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -23,6 +24,7 @@ export function seedDB(): DB {
       title,
       tag,
       recurring,
+      repeatDays: ALL_REPEAT_DAYS,
       bucket: inToday ? "today" : "someday",
       sortOrder: order++,
       status: "open",

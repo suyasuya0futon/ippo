@@ -1,8 +1,16 @@
 // アイテムの入力欄。
 // 文中に #タグ と書くとタグになる。# を打つと既存タグの候補が出る。
-// 「毎日」トグルで習慣にできる。追加にも編集にも使う。
+// 習慣では曜日も指定できる。追加にも編集にも使う。
 import { useRef, useState, type ReactNode } from "react";
 import { useStore, allTags } from "../store";
+import {
+  ALL_REPEAT_DAYS,
+  WEEKDAY_REPEAT_DAYS,
+  REPEAT_DAY_OPTIONS,
+  formatRepeatDays,
+  hasRepeatDay,
+  toggleRepeatDay,
+} from "../recurrence";
 
 // 送信ボタンの既定アイコン（✓）。追加・編集ともこの確定ボタンを使う。
 function CheckIcon() {
@@ -24,9 +32,10 @@ function CheckIcon() {
 }
 
 type Props = {
-  onSubmit: (input: string, recurring: boolean) => void;
+  onSubmit: (input: string, recurring: boolean, repeatDays: number) => void;
   initialText?: string;
   initialRecurring?: boolean;
+  initialRepeatDays?: number;
   placeholder?: string;
   submitLabel?: ReactNode;
   submitClassName?: string;
@@ -34,6 +43,7 @@ type Props = {
   compact?: boolean; // 入力欄を行と同じ高さに詰める（編集パネル用）
   alwaysShowTags?: boolean; // 入力に関係なく既存タグを最初から出す（追加時）
   showRecurring?: boolean;
+  showRepeatDays?: boolean;
   autoFocus?: boolean;
 };
 
@@ -41,6 +51,7 @@ export default function ItemInput({
   onSubmit,
   initialText = "",
   initialRecurring = false,
+  initialRepeatDays = ALL_REPEAT_DAYS,
   placeholder = "例：ジムに行く #健康",
   submitLabel = <CheckIcon />,
   submitClassName = "icon-btn icon-btn--accent",
@@ -48,11 +59,14 @@ export default function ItemInput({
   compact = false,
   alwaysShowTags = false,
   showRecurring = true,
+  showRepeatDays = false,
   autoFocus = false,
 }: Props) {
   const db = useStore();
   const [text, setText] = useState(initialText);
   const [recurring, setRecurring] = useState(initialRecurring);
+  const [repeatDays, setRepeatDays] = useState(initialRepeatDays);
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 末尾で "#部分文字列" を入力中なら、それで絞り込む。
@@ -78,9 +92,11 @@ export default function ItemInput({
 
   function submit() {
     if (!text.trim()) return;
-    onSubmit(text, recurring);
+    onSubmit(text, recurring, repeatDays);
     setText("");
     setRecurring(false);
+    setRepeatDays(ALL_REPEAT_DAYS);
+    setRepeatOpen(false);
   }
 
   return (
@@ -132,6 +148,60 @@ export default function ItemInput({
           />
           毎日くりかえす（習慣にする）
         </label>
+      )}
+
+      {showRepeatDays && (
+        <div className="repeat-setting">
+          <button
+            type="button"
+            className="repeat-setting__summary"
+            aria-expanded={repeatOpen}
+            onClick={() => setRepeatOpen((open) => !open)}
+          >
+            <span>くりかえし</span>
+            <span className="repeat-setting__value">
+              {formatRepeatDays(repeatDays)} <span aria-hidden="true">{repeatOpen ? "▾" : "▸"}</span>
+            </span>
+          </button>
+
+          {repeatOpen && (
+            <div className="repeat-setting__panel">
+              <div className="repeat-setting__presets">
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatDays === ALL_REPEAT_DAYS ? "repeat-preset--active" : ""}`}
+                  onClick={() => setRepeatDays(ALL_REPEAT_DAYS)}
+                >
+                  毎日
+                </button>
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatDays === WEEKDAY_REPEAT_DAYS ? "repeat-preset--active" : ""}`}
+                  onClick={() => setRepeatDays(WEEKDAY_REPEAT_DAYS)}
+                >
+                  平日
+                </button>
+              </div>
+              <div className="repeat-days" aria-label="くりかえす曜日">
+                {REPEAT_DAY_OPTIONS.map(({ day, label }) => {
+                  const selected = hasRepeatDay(repeatDays, day);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      className={`repeat-day ${selected ? "repeat-day--active" : ""}`}
+                      aria-pressed={selected}
+                      aria-label={`${label}曜日`}
+                      onClick={() => setRepeatDays((days) => toggleRepeatDay(days, day))}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

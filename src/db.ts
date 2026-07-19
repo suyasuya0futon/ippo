@@ -13,6 +13,7 @@ import {
   type DoneLog,
   type IppoConversationMessage,
 } from "./types";
+import { ALL_REPEAT_DAYS } from "./recurrence";
 
 // --- 行（DB）→ 型（アプリ）の変換 ---
 
@@ -21,6 +22,7 @@ type ItemRow = {
   title: string;
   tag: string | null;
   recurring: boolean;
+  repeat_days?: number | null;
   bucket: Bucket;
   sort_order: number;
   status: "open" | "done";
@@ -57,6 +59,7 @@ const toItem = (r: ItemRow): Item => ({
   title: r.title,
   tag: r.tag ?? null,
   recurring: r.recurring,
+  repeatDays: r.repeat_days ?? ALL_REPEAT_DAYS,
   bucket: r.bucket ?? "someday",
   sortOrder: r.sort_order ?? 0,
   status: r.status,
@@ -95,6 +98,7 @@ const itemRow = (i: Item) => ({
   title: i.title,
   tag: i.tag ?? null,
   recurring: i.recurring,
+  repeat_days: i.repeatDays,
   bucket: i.bucket,
   sort_order: i.sortOrder,
   status: i.status,

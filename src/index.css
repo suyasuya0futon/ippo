@@ -469,6 +469,88 @@ select {
   padding: 6px 0 10px;
 }
 
+/* 習慣の曜日は必要なときだけ開く。追加・編集欄の主入力より一段控えめに見せる。 */
+.repeat-setting {
+  margin-top: 8px;
+}
+
+.repeat-setting__summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.repeat-setting__value {
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.repeat-setting__panel {
+  padding: 7px 0 2px;
+}
+
+.repeat-setting__presets {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 9px;
+}
+
+.repeat-preset {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.repeat-preset--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.repeat-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.repeat-day {
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.repeat-day--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.habit-schedule {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 /* 今日のタスク1件分（リストの行）。区切り線で並べる */
 .trow {
   border-bottom: 1px solid var(--line);
