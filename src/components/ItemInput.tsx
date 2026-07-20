@@ -1,5 +1,5 @@
 // アイテムの入力欄。
-// 文中に #タグ と書くとタグになる。# を打つと既存タグの候補が出る。
+// 文中に #タグ と書くとタグになる。既存タグは入力内容に関係なく常に表示する。
 // 習慣では曜日も指定できる。追加にも編集にも使う。
 import { useRef, useState, type ReactNode } from "react";
 import { useStore, allTags } from "../store";
@@ -41,7 +41,6 @@ type Props = {
   submitClassName?: string;
   leftAdornment?: ReactNode; // 入力欄の左に置く要素（編集時のゴミ箱など）
   compact?: boolean; // 入力欄を行と同じ高さに詰める（編集パネル用）
-  alwaysShowTags?: boolean; // 入力に関係なく既存タグを最初から出す（追加時）
   showRecurring?: boolean;
   showRepeatDays?: boolean;
   autoFocus?: boolean;
@@ -57,7 +56,6 @@ export default function ItemInput({
   submitClassName = "icon-btn icon-btn--accent",
   leftAdornment,
   compact = false,
-  alwaysShowTags = false,
   showRecurring = true,
   showRepeatDays = false,
   autoFocus = false,
@@ -69,16 +67,7 @@ export default function ItemInput({
   const [repeatOpen, setRepeatOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 末尾で "#部分文字列" を入力中なら、それで絞り込む。
-  // そうでなくても alwaysShowTags なら既存タグを全部出す（スマホで # を打たずにタップで付けられる）。
-  const match = text.match(/[#＃]([^\s#＃]*)$/);
-  const partial = match ? match[1] : null;
-  const suggestions =
-    partial !== null
-      ? allTags(db).filter((t) => t.startsWith(partial) && t !== partial)
-      : alwaysShowTags
-        ? allTags(db)
-        : [];
+  const suggestions = allTags(db);
 
   // タグは1個だけ。タップしたら既存の #タグ を消して、選んだものに置き換える。
   function pickTag(tag: string) {

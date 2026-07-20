@@ -360,7 +360,6 @@ export default function TaskListView({ mode }: { mode: Mode }) {
             <ItemInput
               showRecurring={false}
               showRepeatDays={key === "habit"}
-              alwaysShowTags
               autoFocus
               placeholder={placeholder}
               onSubmit={(input, _recurring, repeatDays) => {
