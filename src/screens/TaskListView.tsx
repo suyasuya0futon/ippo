@@ -258,6 +258,8 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   // 完了分を開いているセクション（既定は全部閉じる＝残タスクだけ見える）
   const [doneOpen, setDoneOpen] = useState<Set<string>>(() => new Set());
+  // 今日の対象外になっている習慣は、必要なときだけ編集できるよう畳んでおく。
+  const [otherHabitsOpen, setOtherHabitsOpen] = useState(false);
   // ドラッグ中のアイテムID（今後やるのみ）
   const [dragId, setDragId] = useState<string | null>(null);
   // ドラッグは行本体（タグ＋文字）を掴んで開始。
@@ -299,7 +301,8 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     emptyText: string,
     habitDoneOf?: (it: Item) => boolean,
     sortable = false,
-    doneItems: Item[] = []
+    doneItems: Item[] = [],
+    extraContent?: ReactNode
   ) {
     const isCollapsed = collapsed.has(key);
     const plainRow = (it: Item) => (
@@ -370,19 +373,23 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           </div>
         )}
         {/* リストは畳める */}
-        {!isCollapsed &&
-          (sortable ? (
-            <DroppableBucket id={key}>
-              <SortableContext
-                items={items.map((i) => i.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {rows}
-              </SortableContext>
-            </DroppableBucket>
-          ) : (
-            <div>{rows}</div>
-          ))}
+        {!isCollapsed && (
+          <>
+            {sortable ? (
+              <DroppableBucket id={key}>
+                <SortableContext
+                  items={items.map((i) => i.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {rows}
+                </SortableContext>
+              </DroppableBucket>
+            ) : (
+              <div>{rows}</div>
+            )}
+            {extraContent}
+          </>
+        )}
       </div>
     );
   }
@@ -508,6 +515,11 @@ export default function TaskListView({ mode }: { mode: Mode }) {
       return habitDoneAt(b.id).localeCompare(habitDoneAt(a.id));
     });
 
+  // 今日の対象外でも、設定ミスや予定変更をいつでも直せるよう編集用に残す。
+  const otherHabits = db.items
+    .filter((i) => i.recurring && !isHabitScheduledOn(i, date))
+    .sort(bySortOrder);
+
   // 今日のタスク：未完了が上（手動順）→ 完了は下（新しい完了ほど上、早い完了ほど下）
   const todayItems = db.items
     .filter(
@@ -571,6 +583,28 @@ export default function TaskListView({ mode }: { mode: Mode }) {
   };
 
   const todayDragItem = dragId ? db.items.find((i) => i.id === dragId) : null;
+  const otherHabitsFold = otherHabits.length > 0 && (
+    <>
+      <button
+        className="done-fold"
+        onClick={() => setOtherHabitsOpen((open) => !open)}
+        aria-expanded={otherHabitsOpen}
+      >
+        <span className="section-head__caret">{otherHabitsOpen ? "▾" : "▸"}</span>
+        ほかの曜日の習慣 {otherHabits.length}件
+      </button>
+      {otherHabitsOpen &&
+        otherHabits.map((item) => (
+          <TaskRow
+            key={item.id}
+            item={item}
+            db={db}
+            mode="today"
+            inactiveHabit
+          />
+        ))}
+    </>
+  );
 
   return (
     <DndContext
@@ -601,7 +635,8 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           "今日の習慣はありません。",
           (it) => isDoneToday(db, it.id),
           true,
-          habitsDone
+          habitsDone,
+          otherHabitsFold
         )}
       </div>
       <DragOverlay>
@@ -680,6 +715,7 @@ function TaskRow({
   dragRef,
   dragStyle,
   dragProps,
+  inactiveHabit = false,
 }: {
   item: Item;
   db: DB;
@@ -688,6 +724,7 @@ function TaskRow({
   dragRef?: (el: HTMLElement | null) => void;
   dragStyle?: CSSProperties;
   dragProps?: Record<string, unknown>;
+  inactiveHabit?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -1019,24 +1056,32 @@ function TaskRow({
   }
 
   return (
-    <div className={`trow ${completing ? "trow--completing" : ""}`} ref={dragRef} style={dragStyle}>
+    <div
+      className={`trow ${completing ? "trow--completing" : ""} ${inactiveHabit ? "trow--inactive-habit" : ""}`}
+      ref={dragRef}
+      style={dragStyle}
+    >
       {/* 本体の行。box-sizing:border-box なので min-height は padding 込み。
           未完了行（アイコンボタン34 + 上下padding22 = 56）に合わせて、完了行も同じ高さに揃える。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 4px", minHeight: 56 }}>
         {/* チェックで完了。今後やるから完了すると、今日やるの完了済みに移る（completeItem が bucket を today に）。 */}
-        <button
-          className={`step__check ${displayDone ? "step__check--done" : ""}`}
-          onClick={handleDoneClick}
-          aria-label={displayDone ? "完了を取り消す" : "完了にする"}
-        >
-          {displayDone ? "✓" : ""}
-        </button>
+        {inactiveHabit ? (
+          <span className="step__check-placeholder" aria-hidden="true" />
+        ) : (
+          <button
+            className={`step__check ${displayDone ? "step__check--done" : ""}`}
+            onClick={handleDoneClick}
+            aria-label={displayDone ? "完了を取り消す" : "完了にする"}
+          >
+            {displayDone ? "✓" : ""}
+          </button>
+        )}
         {/* 行本体（タグ＋文字）を掴んで移動。編集は右の鉛筆から。完了したものは掴めない。 */}
         <span
           className="step__label"
           style={{
             flex: 1,
-            color: displayDone ? "var(--text-soft)" : undefined,
+            color: displayDone || inactiveHabit ? "var(--text-soft)" : undefined,
             cursor: displayDone ? "default" : dragProps ? "grab" : canToggleSteps ? "pointer" : "default",
           }}
           title={displayDone ? undefined : dragProps ? "ドラッグして移動" : canToggleSteps ? "タップで手順を開閉" : undefined}
@@ -1093,7 +1138,8 @@ function TaskRow({
       </div>
 
       {/* ステップ（今日やるのときだけ。今後やるでは砕かない） */}
-      {mode === "today" &&
+      {!inactiveHabit &&
+        mode === "today" &&
         steps.length > 0 &&
         (isDone ? (
           // 完了タスク：タイトルタップで開閉。開いても閲覧のみ（チェック・削除なし。親✔＝全部やった扱い）。
