@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { TagChip } from "../components/TagChip";
+import { getTagStyle } from "../tagColors";
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -48,8 +49,9 @@ export default function DoneBookScreen() {
           {tags.map((t) => (
             <button
               key={t}
-              className={`btn btn--small ${tag === t ? "btn--primary" : ""}`}
-              style={{ borderRadius: 999 }}
+              className="btn btn--small"
+              style={{ borderRadius: 999, ...getTagStyle(t, tag === t) }}
+              aria-pressed={tag === t}
               onClick={() => setTag(tag === t ? null : t)}
             >
               #{t}

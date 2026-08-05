@@ -1,13 +1,15 @@
-// タグのチップ表示（共通部品）。色分けはせず、落ち着いた1色で統一。
+// タグのチップ表示（共通部品）。同じタグには、どの画面でも同じ色が付く。
+import { getTagStyle } from "../tagColors";
+
 export function TagChip({ tag }: { tag: string | null }) {
   if (!tag) return null;
   return (
     <span
       className="chip"
       style={{
-        background: "var(--surface-2)",
-        color: "var(--text-soft)",
-        border: "1px solid var(--line)",
+        ...getTagStyle(tag),
+        borderStyle: "solid",
+        borderWidth: 1,
         marginRight: 6,
       }}
     >

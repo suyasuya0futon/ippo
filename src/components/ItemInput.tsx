@@ -3,6 +3,7 @@
 // 習慣では曜日も指定できる。追加にも編集にも使う。
 import { useRef, useState, type ReactNode } from "react";
 import { useStore, allTags } from "../store";
+import { getTagStyle } from "../tagColors";
 import {
   ALL_REPEAT_DAYS,
   WEEKDAY_REPEAT_DAYS,
@@ -115,7 +116,7 @@ export default function ItemInput({
             <button
               key={t}
               className="btn btn--small"
-              style={{ borderRadius: 999 }}
+              style={{ borderRadius: 999, ...getTagStyle(t) }}
               onClick={() => pickTag(t)}
             >
               #{t}
