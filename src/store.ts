@@ -117,11 +117,6 @@ export function parseTag(input: string): { title: string; tag: string | null } {
   return { title, tag };
 }
 
-/** アイテムを編集用の入力文字列（タイトル #タグ）に戻す */
-export function itemToInput(item: Item): string {
-  return item.tag ? `${item.title} #${item.tag}` : item.title;
-}
-
 /** 今あるタグの一覧（重複なし）。絞り込みや候補に使う。 */
 export function allTags(d: DB): string[] {
   const set = new Set<string>();
@@ -438,6 +433,17 @@ export function reorderSteps(itemId: string, orderedIds: string[]) {
     const step = db.steps.find((s) => s.id === id && s.itemId === itemId);
     if (step) void remote.updateStep(step);
   }
+}
+
+export function editStep(stepId: string, title: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  optimistic((d) => {
+    const step = d.steps.find((s) => s.id === stepId);
+    if (step) step.title = trimmed;
+  });
+  const updated = db.steps.find((s) => s.id === stepId);
+  if (updated) void remote.updateStep(updated);
 }
 
 export function deleteStep(stepId: string) {

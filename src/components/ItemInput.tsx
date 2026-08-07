@@ -2,7 +2,7 @@
 // 文中に #タグ と書くとタグになる。既存タグは入力内容に関係なく常に表示する。
 // 習慣では曜日も指定できる。追加にも編集にも使う。
 import { useRef, useState, type ReactNode } from "react";
-import { useStore, allTags } from "../store";
+import { useStore, allTags, parseTag } from "../store";
 import { getTagStyle } from "../tagColors";
 import {
   ALL_REPEAT_DAYS,
@@ -40,11 +40,14 @@ type Props = {
   placeholder?: string;
   submitLabel?: ReactNode;
   submitClassName?: string;
-  leftAdornment?: ReactNode; // 入力欄の左に置く要素（編集時のゴミ箱など）
+  rightAdornment?: ReactNode;
+  submitPosition?: "start" | "end";
   compact?: boolean; // 入力欄を行と同じ高さに詰める（編集パネル用）
   showRecurring?: boolean;
   showRepeatDays?: boolean;
   autoFocus?: boolean;
+  initialTag?: string | null;
+  separateTagSelection?: boolean;
 };
 
 export default function ItemInput({
@@ -55,23 +58,40 @@ export default function ItemInput({
   placeholder = "例：ジムに行く #健康",
   submitLabel = <CheckIcon />,
   submitClassName = "icon-btn icon-btn--accent",
-  leftAdornment,
+  rightAdornment,
+  submitPosition = "end",
   compact = false,
   showRecurring = true,
   showRepeatDays = false,
   autoFocus = false,
+  initialTag = null,
+  separateTagSelection = false,
 }: Props) {
   const db = useStore();
   const [text, setText] = useState(initialText);
   const [recurring, setRecurring] = useState(initialRecurring);
   const [repeatDays, setRepeatDays] = useState(initialRepeatDays);
   const [repeatOpen, setRepeatOpen] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<string | null>(initialTag);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const suggestions = allTags(db);
 
+  function titleWithoutTagDraft(input: string) {
+    return input
+      .replace(/[#＃][^\s#＃]*/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   // タグは1個だけ。タップしたら既存の #タグ を消して、選んだものに置き換える。
   function pickTag(tag: string) {
+    if (separateTagSelection) {
+      setSelectedTag((current) => (current === tag ? null : tag));
+      setText((current) => titleWithoutTagDraft(current));
+      inputRef.current?.focus();
+      return;
+    }
     const base = text
       .replace(/[#＃][^\s#＃]*/g, "")
       .replace(/\s+/g, " ")
@@ -80,10 +100,29 @@ export default function ItemInput({
     inputRef.current?.focus();
   }
 
+  function addNewTag() {
+    setSelectedTag(null);
+    setText((current) => {
+      const title = titleWithoutTagDraft(current);
+      return title ? `${title} #` : "#";
+    });
+    window.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  }
+
   function submit() {
-    if (!text.trim()) return;
-    onSubmit(text, recurring, repeatDays);
+    const parsed = parseTag(text);
+    const title = separateTagSelection ? titleWithoutTagDraft(text) : parsed.title;
+    if (!title) return;
+    const tag = separateTagSelection ? (parsed.tag ?? selectedTag) : parsed.tag;
+    const input = tag ? `${title} #${tag}` : title;
+    onSubmit(input, recurring, repeatDays);
     setText("");
+    setSelectedTag(null);
     setRecurring(false);
     setRepeatDays(ALL_REPEAT_DAYS);
     setRepeatOpen(false);
@@ -92,7 +131,11 @@ export default function ItemInput({
   return (
     <div>
       <div className="row">
-        {leftAdornment}
+        {submitPosition === "start" && (
+          <button className={submitClassName} style={{ flexShrink: 0 }} onClick={submit} aria-label="保存">
+            {submitLabel}
+          </button>
+        )}
         <input
           ref={inputRef}
           type="text"
@@ -105,23 +148,33 @@ export default function ItemInput({
             if (e.key === "Enter") submit();
           }}
         />
-        <button className={submitClassName} style={{ flexShrink: 0 }} onClick={submit}>
-          {submitLabel}
-        </button>
+        {rightAdornment}
+        {submitPosition === "end" && (
+          <button className={submitClassName} style={{ flexShrink: 0 }} onClick={submit} aria-label="保存">
+            {submitLabel}
+          </button>
+        )}
       </div>
 
-      {suggestions.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+      {(suggestions.length > 0 || separateTagSelection) && (
+        <div className="tag-options">
           {suggestions.map((t) => (
             <button
               key={t}
-              className="btn btn--small"
-              style={{ borderRadius: 999, ...getTagStyle(t) }}
+              type="button"
+              className="btn btn--small tag-option"
+              style={{ ...getTagStyle(t, separateTagSelection && selectedTag === t) }}
               onClick={() => pickTag(t)}
+              aria-pressed={separateTagSelection ? selectedTag === t : undefined}
             >
               #{t}
             </button>
           ))}
+          {separateTagSelection && (
+            <button type="button" className="btn btn--small tag-option tag-option--add" onClick={addNewTag}>
+              ＋タグ追加
+            </button>
+          )}
         </div>
       )}
 

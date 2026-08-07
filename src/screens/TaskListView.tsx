@@ -26,11 +26,11 @@ import {
   convertItemType,
   addStep,
   reorderSteps,
+  editStep,
   toggleStep,
   deleteStep,
   deleteItem,
   editItem,
-  itemToInput,
   completeItem,
   reopenItem,
   isDoneToday,
@@ -65,15 +65,6 @@ const svgBase = {
   strokeLinecap: "round",
   strokeLinejoin: "round",
 } as const;
-
-function EditIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" {...svgBase}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
 
 function TrashIcon() {
   return (
@@ -695,6 +686,7 @@ function SortableTaskRow({
       db={db}
       mode={mode}
       habitDone={habitDone}
+      isDragging={isDragging}
       dragRef={setNodeRef}
       dragStyle={{
         transform: CSS.Transform.toString(transform),
@@ -708,12 +700,71 @@ function SortableTaskRow({
 
 // 小さな一歩のドラッグ行。チェックと削除は通常操作のまま、タイトルだけを掴めるようにする。
 function SortableStepRow({ step }: { step: Step }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(step.title);
+  const editRef = useRef<HTMLDivElement>(null);
+  const suppressEditRef = useRef(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: step.id,
+    disabled: editing,
   });
+  useDismissOnOutside(editRef, editing, () => {
+    setDraft(step.title);
+    setEditing(false);
+  });
+  useEffect(() => {
+    if (isDragging) {
+      suppressEditRef.current = true;
+      return;
+    }
+    if (!suppressEditRef.current) return;
+    const timer = window.setTimeout(() => {
+      suppressEditRef.current = false;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isDragging]);
+
+  function setRefs(node: HTMLDivElement | null) {
+    setNodeRef(node);
+    editRef.current = node;
+  }
+
+  function save() {
+    if (!draft.trim()) return;
+    editStep(step.id, draft);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div ref={setRefs} className="step">
+        <button className="step__check step__check--save" onClick={save} aria-label="保存">
+          <CheckIcon />
+        </button>
+        <input
+          type="text"
+          value={draft}
+          autoFocus
+          style={{ minWidth: 0, height: 34, paddingTop: 0, paddingBottom: 0 }}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+        />
+        <button
+          className="icon-btn icon-btn--ghost"
+          style={{ color: "#c97a7a" }}
+          onClick={() => deleteStep(step.id)}
+          title="削除"
+          aria-label={`${step.title}を削除`}
+        >
+          <TrashIcon />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       className="step"
       style={{
         transform: CSS.Transform.toString(transform),
@@ -731,20 +782,17 @@ function SortableStepRow({ step }: { step: Step }) {
       <span
         className={`step__label ${step.done ? "step__label--done" : ""}`}
         style={{ cursor: "grab" }}
-        title="ドラッグして並び替え"
+        title="タップで編集・ドラッグして並び替え"
+        onClick={() => {
+          if (suppressEditRef.current) return;
+          setDraft(step.title);
+          setEditing(true);
+        }}
         {...attributes}
         {...listeners}
       >
         {step.title}
       </span>
-      <button
-        className="btn--ghost btn"
-        onClick={() => deleteStep(step.id)}
-        style={{ padding: "2px 6px" }}
-        aria-label={`${step.title}を削除`}
-      >
-        ×
-      </button>
     </div>
   );
 }
@@ -759,6 +807,7 @@ function TaskRow({
   dragRef,
   dragStyle,
   dragProps,
+  isDragging = false,
   inactiveHabit = false,
 }: {
   item: Item;
@@ -768,6 +817,7 @@ function TaskRow({
   dragRef?: (el: HTMLElement | null) => void;
   dragStyle?: CSSProperties;
   dragProps?: Record<string, unknown>;
+  isDragging?: boolean;
   inactiveHabit?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -789,6 +839,7 @@ function TaskRow({
   const [completing, setCompleting] = useState(false);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
+  const suppressEditRef = useRef(false);
   const stepSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
@@ -816,6 +867,18 @@ function TaskRow({
   useDismissOnOutside(editRef, editing, () => setEditing(false));
   useDismissOnOutside(stepAddRef, adding, () => setAdding(false), ".step-start");
   useDismissOnOutside(ippoRef, ippoOpen, closeIppo, ".ippo-start");
+
+  useEffect(() => {
+    if (isDragging) {
+      suppressEditRef.current = true;
+      return;
+    }
+    if (!suppressEditRef.current) return;
+    const timer = window.setTimeout(() => {
+      suppressEditRef.current = false;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isDragging]);
 
   useEffect(
     () => () => {
@@ -1077,22 +1140,25 @@ function TaskRow({
     await sendIppoMessage(input);
   }
 
-  // 編集パネル：1行（🗑左・入力中央・✓右）。キャンセルは外タップで解除。種類は保持。
+  // 編集パネル：1行（✓左・入力中央・🗑右）。キャンセルは外タップで解除。種類は保持。
   // padding は通常行（11px 4px）と揃えて、編集を開いても高さがガタつかないようにする。
   if (editing) {
     return (
       <div className="trow" ref={editRef} style={{ padding: "11px 4px" }}>
         <ItemInput
-          initialText={itemToInput(item)}
+          initialText={item.title}
+          initialTag={item.tag}
+          separateTagSelection
           showRecurring={false}
           showRepeatDays={isHabit}
           initialRepeatDays={item.repeatDays}
           compact
-          leftAdornment={
+          submitPosition="start"
+          submitClassName="step__check step__check--save"
+          rightAdornment={
             <button
               className="icon-btn icon-btn--ghost"
-              // チェックボックス(○ 24px)と同じ幅にして、中心と入力欄の左端を揃える
-              style={{ color: "#c97a7a", width: 24, height: 24 }}
+              style={{ color: "#c97a7a" }}
               title="削除"
               aria-label="削除"
               onClick={() => {
@@ -1134,16 +1200,31 @@ function TaskRow({
             {displayDone ? "✓" : ""}
           </button>
         )}
-        {/* 行本体（タグ＋文字）を掴んで移動。編集は右の鉛筆から。完了したものは掴めない。 */}
+        {/* タップ／クリックで編集。長押し／ドラッグでは並べ替え。完了したものは編集・移動しない。 */}
         <span
           className="step__label"
           style={{
             flex: 1,
             color: displayDone || inactiveHabit ? "var(--text-soft)" : undefined,
-            cursor: displayDone ? "default" : dragProps ? "grab" : canToggleSteps ? "pointer" : "default",
+            cursor: displayDone && !canToggleSteps ? "default" : dragProps ? "grab" : "pointer",
           }}
-          title={displayDone ? undefined : dragProps ? "ドラッグして移動" : canToggleSteps ? "タップで手順を開閉" : undefined}
-          onClick={canToggleSteps ? () => setStepsOpen((o) => !o) : undefined}
+          title={
+            canToggleSteps
+              ? "タップで手順を開閉"
+              : displayDone
+                ? undefined
+                : dragProps
+                  ? "タップで編集・ドラッグして移動"
+                  : "タップで編集"
+          }
+          onClick={() => {
+            if (canToggleSteps) {
+              setStepsOpen((open) => !open);
+              return;
+            }
+            if (displayDone || suppressEditRef.current) return;
+            setEditing(true);
+          }}
           {...(displayDone ? {} : (dragProps ?? {}))}
         >
           <TagChip tag={item.tag} />
@@ -1159,17 +1240,6 @@ function TaskRow({
           )}
         </span>
         <span className="icon-actions">
-          {/* 編集（鉛筆）。完了したものは触らない（編集不可）。 */}
-          {!displayDone && (
-            <button
-              className="icon-btn icon-btn--ghost"
-              title="編集"
-              aria-label="編集"
-              onClick={() => setEditing(true)}
-            >
-              <EditIcon />
-            </button>
-          )}
           {/* フラグタスクのみ。今日やる＝⏳今後やるへ（近日中）／今後やる＝🌱今日やるに */}
           {mode === "today" && isFlag && !displayDone && (
             <button
