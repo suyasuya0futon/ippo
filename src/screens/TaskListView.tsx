@@ -25,6 +25,7 @@ import {
   reorderItems,
   convertItemType,
   addStep,
+  reorderSteps,
   toggleStep,
   deleteStep,
   deleteItem,
@@ -35,7 +36,7 @@ import {
   isDoneToday,
   toggleRecurringToday,
 } from "../store";
-import type { Bucket, DB, Item } from "../types";
+import type { Bucket, DB, Item, Step } from "../types";
 import type { IppoConversationMessage } from "../types";
 import { TagChip } from "../components/TagChip";
 import ItemInput from "../components/ItemInput";
@@ -705,6 +706,49 @@ function SortableTaskRow({
   );
 }
 
+// 小さな一歩のドラッグ行。チェックと削除は通常操作のまま、タイトルだけを掴めるようにする。
+function SortableStepRow({ step }: { step: Step }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: step.id,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className="step"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+      }}
+    >
+      <button
+        className={`step__check ${step.done ? "step__check--done" : ""}`}
+        onClick={() => toggleStep(step.id)}
+        aria-label={step.done ? "完了を取り消す" : "完了にする"}
+      >
+        {step.done ? "✓" : ""}
+      </button>
+      <span
+        className={`step__label ${step.done ? "step__label--done" : ""}`}
+        style={{ cursor: "grab" }}
+        title="ドラッグして並び替え"
+        {...attributes}
+        {...listeners}
+      >
+        {step.title}
+      </span>
+      <button
+        className="btn--ghost btn"
+        onClick={() => deleteStep(step.id)}
+        style={{ padding: "2px 6px" }}
+        aria-label={`${step.title}を削除`}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 // habitDone は習慣行のときだけ渡す（その日の完了状態）
 // dragProps は並べ替え対象（未完了）の行だけに渡す。行本体に付けて「掴んで移動」にする。
 function TaskRow({
@@ -745,6 +789,10 @@ function TaskRow({
   const [completing, setCompleting] = useState(false);
   // 完了タスクの手順は既定で畳む（開くと閲覧のみ）
   const [stepsOpen, setStepsOpen] = useState(false);
+  const stepSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
+  );
   const editRef = useRef<HTMLDivElement>(null);
   const stepAddRef = useRef<HTMLDivElement>(null);
   const ippoRef = useRef<HTMLDivElement>(null);
@@ -815,6 +863,16 @@ function TaskRow({
     if (!input) return;
     addStep(item.id, input);
     setStepText("");
+  }
+
+  function handleStepDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const ids = steps.map((step) => step.id);
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    reorderSteps(item.id, arrayMove(ids, oldIndex, newIndex));
   }
 
   function openIppo() {
@@ -1163,27 +1221,15 @@ function TaskRow({
             </div>
           )
         ) : (
-          <div style={{ paddingLeft: 30 }}>
-            {steps.map((s) => (
-              <div key={s.id} className="step">
-                <button
-                  className={`step__check ${s.done ? "step__check--done" : ""}`}
-                  onClick={() => toggleStep(s.id)}
-                  aria-label={s.done ? "完了を取り消す" : "完了にする"}
-                >
-                  {s.done ? "✓" : ""}
-                </button>
-                <span className={`step__label ${s.done ? "step__label--done" : ""}`}>{s.title}</span>
-                <button
-                  className="btn--ghost btn"
-                  onClick={() => deleteStep(s.id)}
-                  style={{ padding: "2px 6px" }}
-                >
-                  ×
-                </button>
+          <DndContext sensors={stepSensors} collisionDetection={closestCorners} onDragEnd={handleStepDragEnd}>
+            <SortableContext items={steps.map((step) => step.id)} strategy={verticalListSortingStrategy}>
+              <div style={{ paddingLeft: 30 }}>
+                {steps.map((step) => (
+                  <SortableStepRow key={step.id} step={step} />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         ))}
 
       {mode === "today" && !isHabit && !displayDone && !adding && !ippoOpen && (

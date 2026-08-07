@@ -417,10 +417,27 @@ export function moveToFuture(itemId: string) {
 export function addStep(itemId: string, title: string) {
   const trimmed = title.trim();
   if (!trimmed) return;
-  const order = db.steps.filter((s) => s.itemId === itemId).length;
+  const order =
+    db.steps
+      .filter((s) => s.itemId === itemId)
+      .reduce((max, step) => Math.max(max, step.order), -1) + 1;
   const step: Step = { id: uid(), itemId, title: trimmed, order, done: false };
   optimistic((d) => d.steps.push(step));
   void remote.insertStep(step);
+}
+
+/** 同じタスク内の手順を orderedIds の順に並べ、0..N の order で保存する。 */
+export function reorderSteps(itemId: string, orderedIds: string[]) {
+  optimistic((d) => {
+    orderedIds.forEach((id, order) => {
+      const step = d.steps.find((s) => s.id === id && s.itemId === itemId);
+      if (step) step.order = order;
+    });
+  });
+  for (const id of orderedIds) {
+    const step = db.steps.find((s) => s.id === id && s.itemId === itemId);
+    if (step) void remote.updateStep(step);
+  }
 }
 
 export function deleteStep(stepId: string) {
