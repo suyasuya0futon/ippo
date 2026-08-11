@@ -13,7 +13,7 @@ import {
   type DoneLog,
   type IppoConversationMessage,
 } from "./types";
-import { ALL_REPEAT_DAYS } from "./recurrence";
+import { ALL_REPEAT_DAYS, WEEKDAY_REPEAT_DAYS } from "./recurrence";
 
 // --- 行（DB）→ 型（アプリ）の変換 ---
 
@@ -23,6 +23,7 @@ type ItemRow = {
   tag: string | null;
   recurring: boolean;
   repeat_days?: number | null;
+  exclude_holidays?: boolean | null;
   bucket: Bucket;
   sort_order: number;
   status: "open" | "done";
@@ -60,6 +61,8 @@ const toItem = (r: ItemRow): Item => ({
   tag: r.tag ?? null,
   recurring: r.recurring,
   repeatDays: r.repeat_days ?? ALL_REPEAT_DAYS,
+  // 新列の移行前に保存された「平日」は、従来どおり祝日を除外して引き継ぐ。
+  excludeHolidays: r.exclude_holidays ?? r.repeat_days === WEEKDAY_REPEAT_DAYS,
   bucket: r.bucket ?? "someday",
   sortOrder: r.sort_order ?? 0,
   status: r.status,
@@ -99,6 +102,7 @@ const itemRow = (i: Item) => ({
   tag: i.tag ?? null,
   recurring: i.recurring,
   repeat_days: i.repeatDays,
+  exclude_holidays: i.excludeHolidays,
   bucket: i.bucket,
   sort_order: i.sortOrder,
   status: i.status,

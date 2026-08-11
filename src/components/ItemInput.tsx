@@ -6,7 +6,6 @@ import { useStore, allTags, parseTag } from "../store";
 import { getTagStyle } from "../tagColors";
 import {
   ALL_REPEAT_DAYS,
-  WEEKDAY_REPEAT_DAYS,
   REPEAT_DAY_OPTIONS,
   formatRepeatDays,
   hasRepeatDay,
@@ -33,10 +32,11 @@ function CheckIcon() {
 }
 
 type Props = {
-  onSubmit: (input: string, recurring: boolean, repeatDays: number) => void;
+  onSubmit: (input: string, recurring: boolean, repeatDays: number, excludeHolidays: boolean) => void;
   initialText?: string;
   initialRecurring?: boolean;
   initialRepeatDays?: number;
+  initialExcludeHolidays?: boolean;
   placeholder?: string;
   submitLabel?: ReactNode;
   submitClassName?: string;
@@ -55,6 +55,7 @@ export default function ItemInput({
   initialText = "",
   initialRecurring = false,
   initialRepeatDays = ALL_REPEAT_DAYS,
+  initialExcludeHolidays = false,
   placeholder = "例：ジムに行く #健康",
   submitLabel = <CheckIcon />,
   submitClassName = "icon-btn icon-btn--accent",
@@ -71,6 +72,7 @@ export default function ItemInput({
   const [text, setText] = useState(initialText);
   const [recurring, setRecurring] = useState(initialRecurring);
   const [repeatDays, setRepeatDays] = useState(initialRepeatDays);
+  const [excludeHolidays, setExcludeHolidays] = useState(initialExcludeHolidays);
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(initialTag);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -120,11 +122,12 @@ export default function ItemInput({
     if (!title) return;
     const tag = separateTagSelection ? (parsed.tag ?? selectedTag) : parsed.tag;
     const input = tag ? `${title} #${tag}` : title;
-    onSubmit(input, recurring, repeatDays);
+    onSubmit(input, recurring, repeatDays, excludeHolidays);
     setText("");
     setSelectedTag(null);
     setRecurring(false);
     setRepeatDays(ALL_REPEAT_DAYS);
+    setExcludeHolidays(false);
     setRepeatOpen(false);
   }
 
@@ -203,7 +206,8 @@ export default function ItemInput({
           >
             <span>くりかえし</span>
             <span className="repeat-setting__value">
-              {formatRepeatDays(repeatDays)} <span aria-hidden="true">{repeatOpen ? "▾" : "▸"}</span>
+              {formatRepeatDays(repeatDays, excludeHolidays)}{" "}
+              <span aria-hidden="true">{repeatOpen ? "▾" : "▸"}</span>
             </span>
           </button>
 
@@ -217,13 +221,14 @@ export default function ItemInput({
                 >
                   毎日
                 </button>
-                <button
-                  type="button"
-                  className={`repeat-preset ${repeatDays === WEEKDAY_REPEAT_DAYS ? "repeat-preset--active" : ""}`}
-                  onClick={() => setRepeatDays(WEEKDAY_REPEAT_DAYS)}
-                >
-                  平日
-                </button>
+                <label className="repeat-holiday-option">
+                  <input
+                    type="checkbox"
+                    checked={excludeHolidays}
+                    onChange={(event) => setExcludeHolidays(event.target.checked)}
+                  />
+                  祝日は除く
+                </label>
               </div>
               <div className="repeat-days" aria-label="くりかえす曜日">
                 {REPEAT_DAY_OPTIONS.map(({ day, label }) => {

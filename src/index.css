@@ -531,8 +531,25 @@ select {
 
 .repeat-setting__presets {
   display: flex;
+  align-items: center;
   gap: 6px;
   margin-bottom: 9px;
+}
+
+.repeat-holiday-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.repeat-holiday-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .repeat-preset {

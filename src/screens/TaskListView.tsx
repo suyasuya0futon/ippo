@@ -289,7 +289,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
     title: ReactNode,
     items: Item[],
     placeholder: string,
-    onAdd: (input: string, repeatDays: number) => void,
+    onAdd: (input: string, repeatDays: number, excludeHolidays: boolean) => void,
     emptyText: string,
     habitDoneOf?: (it: Item) => boolean,
     sortable = false,
@@ -357,8 +357,8 @@ export default function TaskListView({ mode }: { mode: Mode }) {
               showRepeatDays={key === "habit"}
               autoFocus
               placeholder={placeholder}
-              onSubmit={(input, _recurring, repeatDays) => {
-                onAdd(input, repeatDays);
+              onSubmit={(input, _recurring, repeatDays, excludeHolidays) => {
+                onAdd(input, repeatDays, excludeHolidays);
                 setAddOpen(null);
               }}
             />
@@ -623,7 +623,7 @@ export default function TaskListView({ mode }: { mode: Mode }) {
           `習慣${countLabel(habitsRemaining, habits.length, true)}`,
           habitsOpen,
           "習慣にしたいこと（例：カーブスに行く #からだ）",
-          (input, repeatDays) => addItem(input, true, { repeatDays }),
+          (input, repeatDays, excludeHolidays) => addItem(input, true, { repeatDays, excludeHolidays }),
           "今日の習慣はありません。",
           (it) => isDoneToday(db, it.id),
           true,
@@ -1152,6 +1152,7 @@ function TaskRow({
           showRecurring={false}
           showRepeatDays={isHabit}
           initialRepeatDays={item.repeatDays}
+          initialExcludeHolidays={item.excludeHolidays}
           compact
           submitPosition="start"
           submitClassName="step__check step__check--save"
@@ -1170,8 +1171,8 @@ function TaskRow({
             </button>
           }
           autoFocus
-          onSubmit={(input, _recurring, repeatDays) => {
-            editItem(item.id, input, item.recurring, repeatDays);
+          onSubmit={(input, _recurring, repeatDays, excludeHolidays) => {
+            editItem(item.id, input, item.recurring, repeatDays, excludeHolidays);
             setEditing(false);
           }}
         />
@@ -1230,8 +1231,8 @@ function TaskRow({
           <TagChip tag={item.tag} />
           {/* 取り消し線はタイトル文字だけに付ける（タグ chip やキャレットには付けない） */}
           <span style={displayDone ? { textDecoration: "line-through" } : undefined}>{item.title}</span>
-          {isHabit && item.repeatDays !== ALL_REPEAT_DAYS && (
-            <span className="habit-schedule">{formatRepeatDays(item.repeatDays)}</span>
+          {isHabit && (item.repeatDays !== ALL_REPEAT_DAYS || item.excludeHolidays) && (
+            <span className="habit-schedule">{formatRepeatDays(item.repeatDays, item.excludeHolidays)}</span>
           )}
           {canToggleSteps && (
             <span className="section-head__caret" style={{ marginLeft: 6 }}>

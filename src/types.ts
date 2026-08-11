@@ -13,6 +13,7 @@ export type Bucket = "today" | "tomorrow" | "soon" | "someday";
 /**
  * やること。タスクも習慣も買い物も、ぜんぶこれひとつ。
  * - recurring: true なら習慣。repeatDays に当たる曜日だけ今日タブに出る。
+ * - excludeHolidays: true なら、対象曜日でも日本の祝日には表示しない。
  * - tag: 任意で1個だけ。#裁縫 のように書いて付ける。管理画面は持たない。
  * - bucket: 「いつやるか」のフラグ。
  * - sortOrder: 手動の並び順（バケット内、小さいほど上）。
@@ -24,6 +25,8 @@ export interface Item {
   recurring: boolean;
   /** 習慣を表示する曜日のビット集合（0=日〜6=土）。通常タスクでは使わない。 */
   repeatDays: number;
+  /** 日本の祝日・振替休日・国民の休日には習慣を表示しない。 */
+  excludeHolidays: boolean;
   bucket: Bucket;
   sortOrder: number;
   status: "open" | "done"; // recurring の場合は使わない（日ごとに doneLogs で管理）

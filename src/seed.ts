@@ -25,6 +25,7 @@ export function seedDB(): DB {
       tag,
       recurring,
       repeatDays: ALL_REPEAT_DAYS,
+      excludeHolidays: false,
       bucket: inToday ? "today" : "someday",
       sortOrder: order++,
       status: "open",

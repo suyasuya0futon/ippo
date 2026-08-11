@@ -24,12 +24,13 @@ export function toggleRepeatDay(mask: number, day: number): number {
   return next === 0 ? mask : next;
 }
 
-export function formatRepeatDays(mask: number): string {
-  if (mask === ALL_REPEAT_DAYS) return "毎日";
-  if (mask === WEEKDAY_REPEAT_DAYS) return "平日";
-  return REPEAT_DAY_OPTIONS.filter(({ day }) => hasRepeatDay(mask, day))
+export function formatRepeatDays(mask: number, excludeHolidays = false): string {
+  const days = mask === ALL_REPEAT_DAYS
+    ? "毎日"
+    : REPEAT_DAY_OPTIONS.filter(({ day }) => hasRepeatDay(mask, day))
     .map(({ label }) => label)
     .join("・");
+  return excludeHolidays ? `${days}（祝日除く）` : days;
 }
 
 /** YYYY-MM-DD を端末時刻にずらさず曜日へ変換する。 */
@@ -40,7 +41,6 @@ export function weekdayOf(date: string): number {
 
 export function isHabitScheduledOn(item: Item, date: string): boolean {
   if (!item.recurring || !hasRepeatDay(item.repeatDays, weekdayOf(date))) return false;
-  // 「平日」は単なる月〜金ではなく、日本の祝日・振替休日・国民の休日も除く。
-  if (item.repeatDays === WEEKDAY_REPEAT_DAYS && holidayJp.isHoliday(date)) return false;
+  if (item.excludeHolidays && holidayJp.isHoliday(date)) return false;
   return true;
 }

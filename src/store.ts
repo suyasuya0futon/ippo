@@ -129,7 +129,7 @@ export function allTags(d: DB): string[] {
 export function addItem(
   input: string,
   recurring: boolean,
-  opts: { bucket?: Bucket; repeatDays?: number } = {}
+  opts: { bucket?: Bucket; repeatDays?: number; excludeHolidays?: boolean } = {}
 ): string | null {
   const { title, tag } = parseTag(input);
   if (!title) return null;
@@ -139,6 +139,7 @@ export function addItem(
     tag,
     recurring,
     repeatDays: opts.repeatDays ?? ALL_REPEAT_DAYS,
+    excludeHolidays: opts.excludeHolidays ?? false,
     bucket: opts.bucket ?? "someday",
     sortOrder: -Date.now(), // 新しいものほど上（昇順で先頭）
     status: "open",
@@ -153,7 +154,8 @@ export function editItem(
   itemId: string,
   input: string,
   recurring: boolean,
-  repeatDays: number = ALL_REPEAT_DAYS
+  repeatDays: number = ALL_REPEAT_DAYS,
+  excludeHolidays = false
 ) {
   const { title, tag } = parseTag(input);
   if (!title) return;
@@ -164,6 +166,7 @@ export function editItem(
     it.tag = tag;
     it.recurring = recurring;
     it.repeatDays = repeatDays;
+    it.excludeHolidays = excludeHolidays;
   });
   const updated = db.items.find((x) => x.id === itemId);
   if (updated) void remote.updateItem(updated);
