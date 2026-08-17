@@ -1,4 +1,4 @@
--- Keep メモと非公開画像ストレージを追加する。
+-- Keep メモと非公開画像ストレージを追加する（Supabase CLI migration）。
 -- Supabase SQL Editor で一度実行する。何度実行しても安全。
 
 create table if not exists ippo.keep_notes (
