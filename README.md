@@ -49,6 +49,9 @@ IPPO のテーブルは `ippo` スキーマに作ります。
 
 現在の migration:
 
+- `supabase/migrate_keep.sql`
+  - Keep メモ用テーブルと、非公開画像バケット・アクセス制御を追加します。
+
 - `supabase/migrate_tag.sql`
   - 旧 `items.tags text[]` を `items.tag text` に移行します。
 - `supabase/migrate_tag_and_notes.sql`

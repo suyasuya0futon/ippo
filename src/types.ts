@@ -70,6 +70,27 @@ export interface IppoConversationMessage {
   createdAt: string;
 }
 
+/** Keep に添付した画像。実体は非公開の Supabase Storage に置く。 */
+export interface KeepAttachment {
+  id: ID;
+  noteId: ID;
+  storagePath: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
+  /** 表示時だけ発行する期限付きURL。DBには保存しない。 */
+  signedUrl: string;
+}
+
+/** PC とスマホで共有する Keep メモ。 */
+export interface KeepNote {
+  id: ID;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+  attachments: KeepAttachment[];
+}
+
 /** ブラウザに丸ごと保存するデータの全体 */
 export interface DB {
   items: Item[];

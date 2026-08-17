@@ -8,9 +8,10 @@ import TodayScreen from "./screens/TodayScreen";
 import TaskListView from "./screens/TaskListView";
 import DoneBookScreen from "./screens/DoneBookScreen";
 import LoginScreen from "./screens/LoginScreen";
+import KeepScreen from "./screens/KeepScreen";
 import Toast from "./components/Toast";
 
-type Tab = "today" | "future" | "donebook";
+type Tab = "today" | "future" | "keep" | "donebook";
 
 // タブのアイコン（lucide風の線画。currentColor 継承でアクティブ時に accent 色になる）。
 const tabSvg = {
@@ -57,9 +58,18 @@ function BookIcon() {
   );
 }
 
+function KeepIcon() {
+  return (
+    <svg {...tabSvg}>
+      <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h9A2.5 2.5 0 0 1 19 4.5V22l-7-4-7 4z" />
+    </svg>
+  );
+}
+
 const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
   { key: "today", label: "今日やる", icon: <SproutIcon /> },
   { key: "future", label: "今後やる", icon: <ClockIcon /> },
+  { key: "keep", label: "Keep", icon: <KeepIcon /> },
   { key: "donebook", label: "できた帳", icon: <BookIcon /> },
 ];
 
@@ -127,6 +137,7 @@ export default function App() {
       <main className="app__body" style={{ paddingTop: 16 }}>
         {tab === "today" && <TodayScreen />}
         {tab === "future" && <TaskListView mode="future" />}
+        {tab === "keep" && <KeepScreen />}
         {tab === "donebook" && <DoneBookScreen />}
       </main>
 
