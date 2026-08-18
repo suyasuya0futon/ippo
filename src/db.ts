@@ -14,6 +14,7 @@ import {
   type IppoConversationMessage,
 } from "./types";
 import { ALL_REPEAT_DAYS, WEEKDAY_REPEAT_DAYS } from "./recurrence";
+import { canonicalTag } from "./tags";
 
 // --- 行（DB）→ 型（アプリ）の変換 ---
 
@@ -58,7 +59,7 @@ type IppoConversationMessageRow = {
 const toItem = (r: ItemRow): Item => ({
   id: r.id,
   title: r.title,
-  tag: r.tag ?? null,
+  tag: r.tag ? canonicalTag(r.tag) : null,
   recurring: r.recurring,
   repeatDays: r.repeat_days ?? ALL_REPEAT_DAYS,
   // 新列の移行前に保存された「平日」は、従来どおり祝日を除外して引き継ぐ。
@@ -83,7 +84,7 @@ const toLog = (r: LogRow): DoneLog => ({
   refType: r.ref_type,
   refId: r.ref_id,
   title: r.title,
-  tag: r.tag ?? null,
+  tag: r.tag ? canonicalTag(r.tag) : null,
   doneAt: r.done_at,
 });
 const toIppoConversationMessage = (r: IppoConversationMessageRow): IppoConversationMessage => ({
@@ -99,7 +100,7 @@ const toIppoConversationMessage = (r: IppoConversationMessageRow): IppoConversat
 const itemRow = (i: Item) => ({
   id: i.id,
   title: i.title,
-  tag: i.tag ?? null,
+  tag: i.tag ? canonicalTag(i.tag) : null,
   recurring: i.recurring,
   repeat_days: i.repeatDays,
   exclude_holidays: i.excludeHolidays,
@@ -123,7 +124,7 @@ const logRow = (l: DoneLog) => ({
   ref_type: l.refType,
   ref_id: l.refId,
   title: l.title,
-  tag: l.tag ?? null,
+  tag: l.tag ? canonicalTag(l.tag) : null,
   done_at: l.doneAt,
 });
 const ippoConversationMessageRow = (message: IppoConversationMessage) => ({

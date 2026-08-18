@@ -16,6 +16,7 @@ import {
 import { seedDB } from "./seed";
 import * as remote from "./db";
 import { ALL_REPEAT_DAYS } from "./recurrence";
+import { canonicalTag } from "./tags";
 
 let db: DB = structuredClone(emptyDB);
 const listeners = new Set<() => void>();
@@ -108,7 +109,7 @@ export function parseTag(input: string): { title: string; tag: string | null } {
   let tag: string | null = null;
   let m: RegExpExecArray | null;
   while ((m = re.exec(input)) !== null) {
-    if (tag === null && m[1]) tag = m[1]; // 最初の1個を採用
+    if (tag === null && m[1]) tag = canonicalTag(m[1]); // 最初の1個を採用
   }
   const title = input
     .replace(re, "")
@@ -120,7 +121,7 @@ export function parseTag(input: string): { title: string; tag: string | null } {
 /** 今あるタグの一覧（重複なし）。絞り込みや候補に使う。 */
 export function allTags(d: DB): string[] {
   const set = new Set<string>();
-  for (const it of d.items) if (it.tag) set.add(it.tag);
+  for (const it of d.items) if (it.tag) set.add(canonicalTag(it.tag));
   return [...set].sort((a, b) => a.localeCompare(b, "ja"));
 }
 
