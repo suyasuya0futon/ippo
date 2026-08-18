@@ -24,6 +24,10 @@ describe("tag colors", () => {
     expect(getTagColor("勉強")).toEqual(getTagColor("朝活"));
   });
 
+  it("uses the same color for orders and shopping", () => {
+    expect(getTagColor("注文")).toEqual(getTagColor("買物"));
+  });
+
   it("gives common categories more distinct colors", () => {
     const tags = ["DIY", "猫", "覚書", "健康", "散歩", "視聴", "整頓", "掃除", "勉強", "買物", "美容", "病院"];
     expect(new Set(tags.map((tag) => getTagColor(tag).background)).size).toBe(tags.length);
