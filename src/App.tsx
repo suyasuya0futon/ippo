@@ -69,8 +69,8 @@ function KeepIcon() {
 const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
   { key: "today", label: "今日やる", icon: <SproutIcon /> },
   { key: "future", label: "今後やる", icon: <ClockIcon /> },
-  { key: "keep", label: "Keep", icon: <KeepIcon /> },
   { key: "donebook", label: "できた帳", icon: <BookIcon /> },
+  { key: "keep", label: "Keep", icon: <KeepIcon /> },
 ];
 
 function Splash({ text }: { text: string }) {
