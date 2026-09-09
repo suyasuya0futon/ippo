@@ -16,7 +16,7 @@ import {
 import { seedDB } from "./seed";
 import * as remote from "./db";
 import { ALL_REPEAT_DAYS } from "./recurrence";
-import { canonicalTag } from "./tags";
+import { canonicalTag, sortTagsByUsage } from "./tags";
 
 let db: DB = structuredClone(emptyDB);
 const listeners = new Set<() => void>();
@@ -118,11 +118,26 @@ export function parseTag(input: string): { title: string; tag: string | null } {
   return { title, tag };
 }
 
-/** 今あるタグの一覧（重複なし）。絞り込みや候補に使う。 */
+/**
+ * 今あるタグの一覧（重複なし）。よく使う順（同数なら五十音順）。絞り込みや候補に使う。
+ * 並び順の重みは「今あるタスク＋できた帳の記録」の合計。
+ * 完了して手元から消えたタスクも数に入れて、よく使うタグが下がらないようにする。
+ */
 export function allTags(d: DB): string[] {
-  const set = new Set<string>();
-  for (const it of d.items) if (it.tag) set.add(canonicalTag(it.tag));
-  return [...set].sort((a, b) => a.localeCompare(b, "ja"));
+  const counts = new Map<string, number>();
+  const bump = (tag: string) => {
+    const t = canonicalTag(tag);
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  };
+  const tags = new Set<string>();
+  for (const it of d.items) {
+    if (!it.tag) continue;
+    tags.add(canonicalTag(it.tag));
+    bump(it.tag);
+  }
+  // 一覧に出すのは今あるタスクのタグだけ。できた帳は「よく使う度」を足すためだけに数える。
+  for (const log of d.doneLogs) if (log.refType === "item" && log.tag) bump(log.tag);
+  return sortTagsByUsage([...tags], counts);
 }
 
 // --- アイテム ---

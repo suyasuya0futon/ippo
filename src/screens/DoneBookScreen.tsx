@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { TagChip } from "../components/TagChip";
 import { getTagStyle } from "../tagColors";
+import { sortTagsByUsage } from "../tags";
 
 const DOW = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -24,10 +25,13 @@ export default function DoneBookScreen() {
   // できた帳に載せるのは親タスク（item）だけ。手順（step）は親遂行のための足場なので含めない。
   const itemLogs = db.doneLogs.filter((l) => l.refType === "item");
 
-  // できたことに付いているタグ一覧
-  const tags = [
-    ...new Set(itemLogs.map((l) => l.tag).filter((t): t is string => Boolean(t))),
-  ].sort((a, b) => a.localeCompare(b, "ja"));
+  // できたことに付いているタグ一覧。よく使う順（同数なら五十音順）。
+  const tagCounts = new Map<string, number>();
+  for (const log of itemLogs) {
+    if (!log.tag) continue;
+    tagCounts.set(log.tag, (tagCounts.get(log.tag) ?? 0) + 1);
+  }
+  const tags = sortTagsByUsage([...tagCounts.keys()], tagCounts);
 
   // 絞り込んだログ
   const logs = itemLogs.filter((l) => (tag ? l.tag === tag : true));
