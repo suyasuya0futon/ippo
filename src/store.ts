@@ -120,24 +120,17 @@ export function parseTag(input: string): { title: string; tag: string | null } {
 
 /**
  * 今あるタグの一覧（重複なし）。よく使う順（同数なら五十音順）。絞り込みや候補に使う。
- * 並び順の重みは「今あるタスク＋できた帳の記録」の合計。
- * 完了して手元から消えたタスクも数に入れて、よく使うタグが下がらないようにする。
+ * 「よく使う」は、そのタグを付けてタスクを登録した回数（全期間）で数える。
+ * 完了した回数は数えない。毎日やる習慣も登録は1回なので、実際の使用感に近くなる。
  */
 export function allTags(d: DB): string[] {
   const counts = new Map<string, number>();
-  const bump = (tag: string) => {
-    const t = canonicalTag(tag);
-    counts.set(t, (counts.get(t) ?? 0) + 1);
-  };
-  const tags = new Set<string>();
   for (const it of d.items) {
     if (!it.tag) continue;
-    tags.add(canonicalTag(it.tag));
-    bump(it.tag);
+    const t = canonicalTag(it.tag);
+    counts.set(t, (counts.get(t) ?? 0) + 1);
   }
-  // 一覧に出すのは今あるタスクのタグだけ。できた帳は「よく使う度」を足すためだけに数える。
-  for (const log of d.doneLogs) if (log.refType === "item" && log.tag) bump(log.tag);
-  return sortTagsByUsage([...tags], counts);
+  return sortTagsByUsage([...counts.keys()], counts);
 }
 
 // --- アイテム ---
