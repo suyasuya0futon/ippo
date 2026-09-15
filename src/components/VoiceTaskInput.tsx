@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { allTags, saveVoiceTask, undoVoiceTask, useStore } from "../store";
+import { allTags, saveVoiceTask, useStore } from "../store";
+import { showToast } from "../toast";
 import { parseVoiceTask, type VoiceTask } from "../voiceTask";
 import { recognitionConstructor, speechError, type Recognition } from "../speechRecognition";
 
@@ -10,8 +11,6 @@ export default function VoiceTaskInput() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [draft, setDraft] = useState<VoiceTask | null>(null);
-  const [savedId, setSavedId] = useState<string>();
-  const [editing, setEditing] = useState(false);
   const recognition = useRef<Recognition | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mounted = useRef(true);
@@ -34,23 +33,21 @@ export default function VoiceTaskInput() {
     return () => { mounted.current = false; stop(); };
   }, []);
 
-  async function save(task: VoiceTask, id?: string) {
+  async function save(task: VoiceTask) {
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
     setMessage("保存中…");
     try {
-      const result = await saveVoiceTask(task, id);
+      const result = await saveVoiceTask(task);
       if (!mounted.current) return;
       if (!result) throw new Error("save failed");
-      setSavedId(result);
-      setDraft(task);
-      setEditing(false);
-      setMessage(`今日に${id ? "修正" : "追加"}：${task.title}［${task.tag ?? "タグなし"}］`);
+      setDraft(null);
+      setOpen(false);
+      showToast(`今日に追加：${task.title}［${task.tag ?? "タグなし"}］`);
     } catch {
       if (mounted.current) {
-        setEditing(true);
-        setMessage("保存できませんでした。通信を確認して、保存を押してください。");
+        setMessage("保存できませんでした。通信を確認して、再試行してください。");
       }
     } finally {
       locked.current = false;
@@ -67,8 +64,6 @@ export default function VoiceTaskInput() {
       return;
     }
     setDraft(null);
-    setSavedId(undefined);
-    setEditing(false);
     setMessage("お話しください：猫砂 ／ 勉強、漏電遮断器まとめ");
     try {
       const active = new Constructor();
@@ -114,25 +109,6 @@ export default function VoiceTaskInput() {
     }
   }
 
-  async function undo() {
-    if (!savedId || locked.current) return;
-    locked.current = true;
-    setBusy(true);
-    try {
-      if (!await undoVoiceTask(savedId)) throw new Error("delete failed");
-      if (!mounted.current) return;
-      setSavedId(undefined);
-      setDraft(null);
-      setEditing(false);
-      setMessage("追加を取り消しました。");
-    } catch {
-      if (mounted.current) setMessage("取り消せませんでした。通信を確認して、もう一度お試しください。");
-    } finally {
-      locked.current = false;
-      if (mounted.current) setBusy(false);
-    }
-  }
-
   return <>
     <button type="button" className={`tabbar__btn ${listening ? "tabbar__btn--active" : ""}`}
       onClick={() => { if (open) { if (!busy) { stop(); setListening(false); setOpen(false); } } else start(); }}
@@ -148,21 +124,12 @@ export default function VoiceTaskInput() {
       </div>
       <p className="voice-task__hint">タグ省略＝買物 · 1回に1件<br />「猫砂」「勉強、○○」「タグなし、○○」</p>
       <p role="status" className="voice-task__message">{message}</p>
-      {editing && draft && <form onSubmit={(event) => { event.preventDefault(); if (draft.title.trim()) void save(draft, savedId); }}>
-        <label>やること<input autoFocus value={draft.title} disabled={busy} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
-        <label>タグ<select value={draft.tag ?? ""} disabled={busy} onChange={(event) => setDraft({ ...draft, tag: event.target.value || null })}>
-          <option value="">タグなし</option>
-          {[...new Set(["買物", "勉強", ...allTags(db), ...(draft.tag ? [draft.tag] : [])])].map((tag) => <option key={tag} value={tag}>{tag}</option>)}
-        </select></label>
-        <button className="btn" disabled={busy || !draft.title.trim()}>保存</button>
-      </form>}
       <div className="voice-task__actions">
-        {savedId && !editing && <button className="btn btn--small" disabled={busy} onClick={() => setEditing(true)}>修正</button>}
-        {savedId && <button className="btn btn--ghost btn--small" disabled={busy} onClick={() => void undo()}>取り消す</button>}
-        {!editing && <button className="btn btn--small" disabled={busy} onClick={() => {
+        {draft && !busy && <button className="btn btn--small" onClick={() => void save(draft)}>再試行</button>}
+        <button className="btn btn--small" disabled={busy} onClick={() => {
           if (listening) { stop(); setListening(false); setMessage("録音をキャンセルしました。"); }
           else start();
-        }}>{listening ? "録音をキャンセル" : "もう一度話す"}</button>}
+        }}>{listening ? "録音をキャンセル" : "もう一度話す"}</button>
       </div>
     </section>}
   </>;

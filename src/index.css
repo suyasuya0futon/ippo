@@ -97,9 +97,6 @@ body::-webkit-scrollbar {
 .voice-task__hint { font-size: 12px; color: var(--text-soft); line-height: 1.8; }
 .voice-task__message { font-size: 14px; overflow-wrap: anywhere; }
 .voice-task__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.voice-task form { display: grid; gap: 10px; }
-.voice-task label { display: grid; gap: 4px; font-size: 13px; }
-.voice-task select { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
 
 .tabbar {
   position: fixed;
