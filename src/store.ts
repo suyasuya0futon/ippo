@@ -19,6 +19,7 @@ import { ALL_REPEAT_DAYS } from "./recurrence";
 import { canonicalTag, sortTagsByUsage } from "./tags";
 
 let db: DB = structuredClone(emptyDB);
+let storeGeneration = 0;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -66,6 +67,7 @@ export async function seedIfEmpty() {
 
 /** ログアウト時にメモリを空にする */
 export function clearStore() {
+  storeGeneration++;
   db = structuredClone(emptyDB);
   emit();
 }
@@ -134,6 +136,37 @@ export function allTags(d: DB): string[] {
 }
 
 // --- アイテム ---
+
+/** 音声入力は保存の完了を待ってから成功を表示する。修正・取り消しも同様。 */
+export async function saveVoiceTask(task: { title: string; tag: string | null }, itemId?: string): Promise<string | null> {
+  const title = task.title.trim();
+  if (!title) return null;
+  const existing = itemId ? db.items.find((item) => item.id === itemId) : undefined;
+  if (itemId && !existing) return null;
+  const item: Item = existing
+    ? { ...existing, title, tag: task.tag }
+    : { id: uid(), title, tag: task.tag, recurring: false, repeatDays: ALL_REPEAT_DAYS,
+        excludeHolidays: false, bucket: "today", sortOrder: -Date.now(), status: "open", createdAt: now() };
+  const generation = storeGeneration;
+  const ok = existing ? await remote.updateItem(item) : await remote.insertItem(item);
+  if (!ok) return null;
+  // Do not restore a previous user's data after logout.
+  if (generation !== storeGeneration) return null;
+  optimistic((d) => {
+    if (existing) d.items = d.items.map((value) => value.id === item.id ? item : value);
+    else d.items.push(item);
+  });
+  return item.id;
+}
+
+export async function undoVoiceTask(itemId: string): Promise<boolean> {
+  if (!await remote.deleteItemRow(itemId)) return false;
+  optimistic((d) => {
+    d.items = d.items.filter((item) => item.id !== itemId);
+    d.steps = d.steps.filter((step) => step.itemId !== itemId);
+  });
+  return true;
+}
 
 export function addItem(
   input: string,

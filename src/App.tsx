@@ -10,6 +10,7 @@ import DoneBookScreen from "./screens/DoneBookScreen";
 import LoginScreen from "./screens/LoginScreen";
 import KeepScreen from "./screens/KeepScreen";
 import Toast from "./components/Toast";
+import VoiceTaskInput from "./components/VoiceTaskInput";
 
 type Tab = "today" | "future" | "keep" | "donebook";
 
@@ -152,6 +153,7 @@ export default function App() {
             {t.label}
           </button>
         ))}
+        <VoiceTaskInput key={userId} />
       </nav>
     </div>
   );

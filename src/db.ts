@@ -181,7 +181,9 @@ export async function bulkInsert(db: DB) {
 // --- 書き込み（個別操作）。呼び出し側は待たなくてよい（楽観更新済み） ---
 
 export async function insertItem(i: Item) {
-  warn("insertItem", (await supabase.from("items").insert(itemRow(i))).error);
+  const { error } = await supabase.from("items").insert(itemRow(i));
+  warn("insertItem", error);
+  return !error;
 }
 export async function updateItem(i: Item): Promise<boolean> {
   const { error } = await supabase.from("items").update(itemRow(i)).eq("id", i.id);
@@ -191,7 +193,9 @@ export async function updateItem(i: Item): Promise<boolean> {
 export async function deleteItemRow(id: string) {
   // steps は外部キーの cascade で一緒に消える。
   // できたことログ（done_logs）は履歴として残すので消さない。
-  warn("deleteItem", (await supabase.from("items").delete().eq("id", id)).error);
+  const { error } = await supabase.from("items").delete().eq("id", id);
+  warn("deleteItem", error);
+  return !error;
 }
 
 export async function insertStep(s: Step) {
