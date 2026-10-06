@@ -149,19 +149,38 @@ function logError(where: string, error: unknown) {
 
 // --- 読み込み（自分の全データ） ---
 
+// Supabase は1回の問い合わせで最大1000行しか返さないので、ページに分けて最後まで読む。
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows(table: string): Promise<unknown[]> {
+  const rows: unknown[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    // 並びを固定しないとページの境目で行が重複・欠落しうるので id 順にする。
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .order("id")
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) {
+      logError(`fetch ${table}`, error);
+      break;
+    }
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 export async function fetchAll(): Promise<DB> {
   const db: DB = structuredClone(emptyDB);
   const [items, steps, logs] = await Promise.all([
-    supabase.from("items").select("*"),
-    supabase.from("steps").select("*"),
-    supabase.from("done_logs").select("*"),
+    fetchAllRows("items"),
+    fetchAllRows("steps"),
+    fetchAllRows("done_logs"),
   ]);
-  if (items.error) logError("fetch items", items.error);
-  if (steps.error) logError("fetch steps", steps.error);
-  if (logs.error) logError("fetch logs", logs.error);
-  db.items = (items.data ?? []).map((r) => toItem(r as ItemRow));
-  db.steps = (steps.data ?? []).map((r) => toStep(r as StepRow));
-  db.doneLogs = (logs.data ?? []).map((r) => toLog(r as LogRow));
+  db.items = items.map((r) => toItem(r as ItemRow));
+  db.steps = steps.map((r) => toStep(r as StepRow));
+  db.doneLogs = logs.map((r) => toLog(r as LogRow));
   return db;
 }
 
